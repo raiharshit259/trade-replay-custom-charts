@@ -1,0 +1,20 @@
+{
+  "name": "tradereplay",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "app": "concurrently -n backend,frontend -c green,cyan \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "typecheck": "npm --prefix backend run build && npm --prefix frontend run typecheck",
+    "migrate": "npm --prefix backend run migrate",
+    "seed": "npm --prefix backend run seed",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "concurrently": "^9.2.1"
+  }
+}
