@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Kafka KRaft mode setup (no Zookeeper) — DigitalOcean Droplet
+# Tuned for $6 droplet (1 vCPU / 1GB RAM + 1GB swap)
 # Run as root. Installs Kafka 3.7.x with KRaft.
 set -euo pipefail
 
@@ -9,7 +10,7 @@ KAFKA_DATA="/var/lib/kafka"
 KAFKA_LOG="/var/log/kafka"
 KRAFT_CLUSTER_ID=""
 
-echo "=== Kafka KRaft Setup (v${KAFKA_VERSION}) ==="
+echo "=== Kafka KRaft Setup (v${KAFKA_VERSION}) — memory-tuned ==="
 
 # ---- Java ----
 if ! command -v java &> /dev/null; then
@@ -76,6 +77,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
+# Memory-tuned for 1GB droplet: 256MB heap (default is 1GB which OOMs)
+Environment="KAFKA_HEAP_OPTS=-Xmx256m -Xms256m"
 ExecStart=${KAFKA_DIR}/bin/kafka-server-start.sh ${KAFKA_DIR}/config/kraft/server.properties
 ExecStop=${KAFKA_DIR}/bin/kafka-server-stop.sh
 Restart=on-failure

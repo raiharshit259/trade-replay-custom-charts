@@ -76,9 +76,7 @@ Examples:
 
 The app resolves profile values from `NODE_ENV` and falls back to `LOCAL_` values.
 
-Google OAuth client ID is configured for local/dev/qa in `.env`:
-
-- `519388948862-jgnq690fvh4ipig0ujcagbv671b8uvqh.apps.googleusercontent.com`
+Google OAuth client ID must be set via environment variable `VITE_GOOGLE_CLIENT_ID` in `.env`.
 
 ## Product Flow
 

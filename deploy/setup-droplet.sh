@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # DigitalOcean Droplet Setup Script — Trade Replay Backend
+# Optimized for $6 droplet (1 vCPU / 1GB RAM)
 # Run as root on a fresh Ubuntu 22.04/24.04 droplet
 set -euo pipefail
 
-echo "=== Trade Replay — Droplet Setup ==="
+echo "=== Trade Replay — Droplet Setup (cost-optimized) ==="
 
 # ---- System updates ----
 apt-get update && apt-get upgrade -y
 apt-get install -y curl git nginx ufw snapd
+
+# ---- Swap (critical for 1GB droplet) ----
+if [ ! -f /swapfile ]; then
+  fallocate -l 1G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl vm.swappiness=10
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+  echo "Swap: 1GB created"
+fi
 
 # ---- Node.js 20 LTS ----
 if ! command -v node &> /dev/null; then
@@ -20,9 +33,25 @@ echo "Node.js $(node -v)"
 npm install -g pm2
 pm2 startup systemd -u root --hp /root
 
+# ---- Redis (local, saves $10/mo vs managed) ----
+if ! command -v redis-server &> /dev/null; then
+  apt-get install -y redis-server
+fi
+# Harden: bind to localhost, set memory limit for 1GB droplet
+sed -i 's/^bind .*/bind 127.0.0.1 ::1/' /etc/redis/redis.conf
+sed -i 's/^# maxmemory .*/maxmemory 128mb/' /etc/redis/redis.conf
+sed -i 's/^# maxmemory-policy .*/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
+# Require password
+REDIS_PASS=$(openssl rand -hex 16)
+sed -i "s/^# requirepass .*/requirepass ${REDIS_PASS}/" /etc/redis/redis.conf
+systemctl enable redis-server
+systemctl restart redis-server
+echo "Redis running on 127.0.0.1:6379 (password saved below)"
+
 # ---- Firewall ----
 ufw allow OpenSSH
 ufw allow 'Nginx Full'
+# Do NOT expose Redis or Kafka ports externally
 ufw --force enable
 
 # ---- Create app directory ----
@@ -52,10 +81,19 @@ nginx -t && systemctl restart nginx
 # certbot --nginx -d api.tradereplay.me --non-interactive --agree-tos -m YOUR_EMAIL
 
 echo ""
-echo "=== Setup complete ==="
+echo "============================================="
+echo "  Setup complete — Cost-optimized ($6 plan)"
+echo "============================================="
+echo ""
+echo "Redis password: ${REDIS_PASS}"
+echo "(Save this! You need it for PROD_REDIS_URL)"
+echo ""
 echo "Next steps:"
-echo "  1. Copy .env to /opt/tradereplay/.env with PROD_ values"
-echo "  2. Run: cd /opt/tradereplay && pm2 start ecosystem.config.cjs"
-echo "  3. Run: pm2 save"
-echo "  4. Point DNS: api.tradereplay.me → this droplet's IP"
-echo "  5. Run SSL: certbot --nginx -d api.tradereplay.me"
+echo "  1. Run: bash /opt/tradereplay/deploy/setup-kafka-kraft.sh"
+echo "  2. Create .env at /opt/tradereplay/.env with:"
+echo "       PROD_REDIS_URL=redis://default:${REDIS_PASS}@127.0.0.1:6379"
+echo "       (plus other PROD_ values from .env.production.template)"
+echo "  3. Run: cd /opt/tradereplay && pm2 start ecosystem.config.cjs"
+echo "  4. Run: pm2 save"
+echo "  5. Point DNS: api.tradereplay.me → $(curl -s ifconfig.me)"
+echo "  6. Run: bash /opt/tradereplay/deploy/setup-ssl.sh"

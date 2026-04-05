@@ -56,7 +56,7 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_ENABLED: "true"
       KAFKA_BROKERS: kafka:9092
-      JWT_SECRET: docker-dev-secret
+      JWT_SECRET: ${JWT_SECRET:-local-dev-placeholder}
       USD_TO_INR: 83.5
     ports:
       - "4000:4000"
