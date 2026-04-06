@@ -1,14 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
-import { TrendingUp } from "lucide-react";
+import { useState } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import GlobalLoader from "@/components/GlobalLoader";
 import GlobalNavbar from "@/components/GlobalNavbar";
-import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import { AppProvider } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Login from "./pages/Login";
@@ -22,89 +20,12 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-type RouteBackgroundConfig = {
-  showShellLayers?: boolean;
-  showGradientOverlay?: boolean;
-  cloudsClassName?: string;
-  birdsClassName?: string;
-  showReadyOverlay?: boolean;
-};
-
-function getRouteBackgroundConfig(pathname: string): RouteBackgroundConfig | null {
-  if (pathname === "/" || pathname === "/homepage") {
-    return {
-      showGradientOverlay: true,
-      cloudsClassName: "absolute inset-0 z-0",
-      birdsClassName: "absolute inset-0 z-[1]",
-      showReadyOverlay: true,
-    };
-  }
-
-  if (
-    pathname === "/login"
-    || pathname === "/signup"
-    || pathname === "/dashboard"
-    || pathname === "/portfolio/create"
-    || pathname.startsWith("/portfolio/edit/")
-    || pathname === "/simulation"
-    || pathname === "/live-market"
-  ) {
-    return { showShellLayers: true };
-  }
-
-  return null;
-}
-
 function AnimatedRoutes() {
   const location = useLocation();
-  const [vantaReady, setVantaReady] = useState(false);
-  const backgroundConfig = useMemo(
-    () => getRouteBackgroundConfig(location.pathname),
-    [location.pathname],
-  );
-
-  useEffect(() => {
-    setVantaReady(backgroundConfig == null);
-  }, [location.pathname, backgroundConfig]);
 
   return (
     <>
       <GlobalLoader isRouteLoading={false} />
-      {backgroundConfig ? (
-        <PageBirdsCloudsBackground
-          showShellLayers={backgroundConfig.showShellLayers}
-          showGradientOverlay={backgroundConfig.showGradientOverlay}
-          cloudsClassName={backgroundConfig.cloudsClassName}
-          birdsClassName={backgroundConfig.birdsClassName}
-          onReadyChange={setVantaReady}
-        />
-      ) : null}
-
-      <AnimatePresence>
-        {backgroundConfig?.showReadyOverlay && !vantaReady ? (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8, ease: "easeInOut" }}
-            className="absolute inset-0 z-[10] flex items-center justify-center bg-background"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.08, 1], opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              className="flex flex-col items-center gap-4"
-            >
-              <div className="relative h-16 w-16">
-                <div className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" />
-                <div className="absolute inset-2 rounded-full border-2 border-t-primary border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <TrendingUp size={20} className="text-primary" />
-                </div>
-              </div>
-              <p className="text-sm font-medium text-muted-foreground tracking-wide">Loading experience...</p>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
 
       <AnimatePresence mode="wait">
         <motion.div

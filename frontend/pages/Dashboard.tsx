@@ -8,6 +8,7 @@ import { getApiErrorMessage } from "@/lib/api";
 import { scenarios } from "@/data/stockData";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
+import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
@@ -232,6 +233,8 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
+      <PageBirdsCloudsBackground showShellLayers />
+
       <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-5 pb-8 space-y-8">
         <section aria-label="Hero summary" className="section-enter">
           <ScrollReveal>

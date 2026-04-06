@@ -9,6 +9,7 @@ import PortfolioPanel from '@/components/simulation/PortfolioPanel';
 import TradeHistory from '@/components/simulation/TradeHistory';
 import TopBar from '@/components/simulation/TopBar';
 import BrandLottie from '@/components/BrandLottie';
+import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
 import ScrollReveal from '@/components/ScrollReveal';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
 import { BarChart3, History, Wallet, LineChart } from 'lucide-react';
@@ -77,10 +78,7 @@ export default function Simulation() {
 
   return (
     <div className="min-h-screen flex flex-col pt-24 page-gradient-shell overflow-x-hidden">
-      <div className="page-bg-orb page-bg-orb--one" aria-hidden="true" />
-      <div className="page-bg-orb page-bg-orb--two" aria-hidden="true" />
-      <div className="page-bg-orb page-bg-orb--three" aria-hidden="true" />
-      <div className="page-bg-grid" aria-hidden="true" />
+      <PageBirdsCloudsBackground showShellLayers />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
       {isInitializingSimulation && (

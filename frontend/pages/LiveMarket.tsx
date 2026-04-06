@@ -6,6 +6,7 @@ import TradingChart from "@/components/chart/TradingChart";
 import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
+import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { useApp } from "@/context/AppContext";
 import { useLiveMarketData } from "@/hooks/useLiveMarketData";
@@ -138,6 +139,8 @@ export default function LiveMarket() {
 
   return (
     <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
+      <PageBirdsCloudsBackground showShellLayers />
+
       <main className="px-3 pt-5 pb-8 relative z-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
