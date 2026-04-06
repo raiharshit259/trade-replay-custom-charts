@@ -81,6 +81,11 @@ export default function Simulation() {
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
+      <main
+        className="relative z-10"
+        style={{ marginTop: 'calc(var(--scenario-bar-height, 0px) + 16px)' }}
+      >
+
       {isInitializingSimulation && (
         <div className="px-3 pt-3">
           <div className="glass-strong rounded-lg p-3 text-sm text-muted-foreground">
@@ -94,7 +99,7 @@ export default function Simulation() {
 
       {/* Desktop Layout */}
       <motion.div
-        className="flex-1 hidden md:flex gap-3 p-3 pt-4 relative z-10"
+        className="flex-1 hidden md:flex gap-3 p-3 relative z-10"
         initial="hidden"
         animate="show"
         variants={{
@@ -137,7 +142,7 @@ export default function Simulation() {
       </div>
 
       {/* Mobile Layout */}
-      <div className="flex-1 md:hidden p-3 pt-4 relative z-10">
+      <div className="flex-1 md:hidden p-3 relative z-10">
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
@@ -179,6 +184,7 @@ export default function Simulation() {
           </button>
         ))}
       </div>
+      </main>
     </div>
   );
 }

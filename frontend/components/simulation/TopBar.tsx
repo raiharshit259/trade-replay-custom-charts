@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, Search, SkipBack, SkipForward } from 'lucide-react';
 import BrandLottie from '@/components/BrandLottie';
 import AssetAvatar from '@/components/ui/AssetAvatar';
@@ -41,6 +41,7 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'NYSE' | 'NASDAQ' | 'NSE' | 'BSE' | 'CRYPTO' | 'FOREX' | 'COMMODITIES'>('ALL');
   const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
   const [selectedAssetMeta, setSelectedAssetMeta] = useState<AssetSearchItem | null>(null);
+  const topBarRef = useRef<HTMLDivElement | null>(null);
 
   const scenario = scenarios.find((item) => item.id === scenarioId)!;
 
@@ -63,11 +64,33 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
   const selectedAssetIcon = selectedAssetMeta?.iconUrl || selectedAssetMeta?.logoUrl || selectedScenarioStock?.icon;
   const selectedExchangeIcon = selectedAssetMeta?.exchangeLogoUrl || selectedAssetMeta?.exchangeIcon;
 
+  useEffect(() => {
+    const topBar = topBarRef.current;
+    if (!topBar) return;
+
+    const updateHeightVar = (height: number) => {
+      document.documentElement.style.setProperty('--scenario-bar-height', `${Math.ceil(height)}px`);
+    };
+
+    updateHeightVar(topBar.getBoundingClientRect().height);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      updateHeightVar(entry.contentRect.height);
+    });
+
+    observer.observe(topBar);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <motion.div
+      ref={topBarRef}
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="glass sticky top-[62px] z-40 mt-1 border-b border-primary/25 px-3 py-3.5 shadow-[0_8px_28px_hsl(var(--background)/0.45)] backdrop-blur-xl md:top-[66px] md:px-4"
+      className="glass fixed left-0 right-0 z-40 border-b border-primary/25 px-3 py-3.5 shadow-[0_8px_28px_hsl(var(--background)/0.45)] backdrop-blur-xl md:px-4"
+      style={{ top: 'var(--navbar-height, 64px)' }}
     >
       <div className="flex flex-wrap items-center gap-2.5 md:gap-3">
         <motion.div className="mr-1 flex items-center gap-2.5" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.35, ease: 'easeOut' }}>

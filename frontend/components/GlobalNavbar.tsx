@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
@@ -28,6 +28,7 @@ export default function GlobalNavbar() {
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
+  const navRef = useRef<HTMLElement | null>(null);
 
   const goToAuthGate = useCallback((targetPath: string, mode: "login" | "signup" = "login") => {
     const redirect = encodeURIComponent(targetPath);
@@ -39,6 +40,26 @@ export default function GlobalNavbar() {
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const updateHeightVar = (height: number) => {
+      document.documentElement.style.setProperty("--navbar-height", `${Math.ceil(height)}px`);
+    };
+
+    updateHeightVar(nav.getBoundingClientRect().height);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      updateHeightVar(entry.contentRect.height);
+    });
+
+    observer.observe(nav);
+    return () => observer.disconnect();
   }, []);
 
   const goHome = useCallback(() => {
@@ -142,6 +163,7 @@ export default function GlobalNavbar() {
   return (
     <>
       <motion.nav
+        ref={navRef}
         initial={{ y: -14, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className={`glass sticky top-0 z-50 px-4 md:px-6 py-3.5 backdrop-blur-xl border-b border-primary/25 shadow-[0_8px_28px_hsl(var(--background)/0.45)] transition-colors duration-300 ${
