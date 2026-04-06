@@ -4,6 +4,7 @@ import { useApp } from '@/context/AppContext';
 import { CandleData, getStockInfo } from '@/data/stockData';
 import { toast } from 'sonner';
 import InteractiveSurface from '@/components/ui/InteractiveSurface';
+import AssetAvatar from '@/components/ui/AssetAvatar';
 
 interface PortfolioPanelProps {
   stockCandles: Record<string, CandleData[]>;
@@ -74,7 +75,10 @@ export default function PortfolioPanel({ stockCandles, candleIndex }: PortfolioP
               const info = getStockInfo(h.symbol);
               return (
                 <div key={h.symbol} className="flex justify-between items-center text-xs">
-                  <span className="font-mono text-foreground">{info?.icon ?? '📈'} {h.symbol} × {h.quantity}</span>
+                  <span className="inline-flex items-center gap-1.5 font-mono text-foreground">
+                    <AssetAvatar src={info?.icon} label={info?.name ?? h.symbol} className="h-3.5 w-3.5 rounded-full object-cover ring-1 ring-border/70" />
+                    {h.symbol} × {h.quantity}
+                  </span>
                   <span className={`font-mono ${pl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     {pl >= 0 ? '+' : ''}{formatCurrency(pl)}
                   </span>
@@ -105,13 +109,13 @@ export default function PortfolioPanel({ stockCandles, candleIndex }: PortfolioP
                 return;
               }
               setIsUploading(true);
-              const ok = await importPortfolioCsv(csvFile);
+              const result = await importPortfolioCsv(csvFile);
               setIsUploading(false);
-              if (ok) {
+              if (result.ok) {
                 toast.success('Portfolio imported into simulation');
                 return;
               }
-              toast.error('Portfolio CSV import failed');
+              toast.error(result.message ?? 'Portfolio CSV import failed');
             }}
             disabled={isUploading}
             className="premium-select px-2 py-1 rounded text-xs disabled:opacity-60 interactive-cta"

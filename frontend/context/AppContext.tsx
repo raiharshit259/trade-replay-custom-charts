@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { CandleData, scenarios } from '@/data/stockData';
-import { api, setApiToken } from '@/lib/api';
+import { api, getApiErrorCode, getApiErrorMessage, setApiToken } from '@/lib/api';
 import { connectSocket, disconnectSocket, getSocket } from '@/lib/socket';
 
 export interface Trade {
@@ -22,6 +22,12 @@ export interface Holding {
 }
 
 export type Currency = 'USD' | 'INR' | 'EUR' | 'GBP' | 'JPY';
+
+interface ActionResult {
+  ok: boolean;
+  message?: string;
+  code?: string;
+}
 
 const FX_RATES: Record<Currency, number> = {
   USD: 1,
@@ -60,8 +66,8 @@ interface AppState {
   currentCandleIndex: number;
   isPlaying: boolean;
   playSpeed: number;
-  login: (email: string, password: string, isSignup?: boolean) => Promise<boolean>;
-  googleLogin: (idToken: string) => Promise<boolean>;
+  login: (email: string, password: string, isSignup?: boolean) => Promise<ActionResult>;
+  googleLogin: (idToken: string) => Promise<ActionResult>;
   logout: () => void;
   setCurrency: (c: Currency) => void;
   setActivePortfolioId: (id: string | null) => void;
@@ -70,11 +76,11 @@ interface AppState {
   setCurrentCandleIndex: (i: number) => Promise<void>;
   setIsPlaying: (p: boolean) => void;
   setPlaySpeed: (s: number) => Promise<void>;
-  executeTrade: (type: 'BUY' | 'SELL', symbol: string, price: number, quantity: number, date: string) => Promise<boolean>;
+  executeTrade: (type: 'BUY' | 'SELL', symbol: string, price: number, quantity: number, date: string) => Promise<ActionResult>;
   initializeSimulation: (input?: { portfolioId?: string; scenarioId?: string; symbol?: string }) => Promise<void>;
   stepForward: () => Promise<void>;
   stepBackward: () => Promise<void>;
-  importPortfolioCsv: (file: File) => Promise<boolean>;
+  importPortfolioCsv: (file: File) => Promise<ActionResult>;
   setDateRange: (start: string, end: string) => void;
   formatCurrency: (amount: number) => string;
   getPortfolioValue: (candles: Record<string, CandleData[]>, index: number) => number;
@@ -155,19 +161,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           const registerResponse = await api.post('/auth/register', { email, password, name: email.split('@')[0] });
           hydrateAuth(registerResponse.data.token, registerResponse.data.user.email, registerResponse.data.user.name);
-          return true;
+          return { ok: true };
         } catch (_registerError) {
           const loginResponse = await api.post('/auth/login', { email, password });
           hydrateAuth(loginResponse.data.token, loginResponse.data.user.email, loginResponse.data.user.name);
-          return true;
+          return { ok: true };
         }
       }
 
       const response = await api.post('/auth/login', { email, password });
       hydrateAuth(response.data.token, response.data.user.email, response.data.user.name);
-      return true;
-    } catch (_error) {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: getApiErrorMessage(error, 'Authentication failed'),
+        code: getApiErrorCode(error),
+      };
     }
   }, [hydrateAuth]);
 
@@ -175,9 +185,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const response = await api.post('/auth/google', { idToken });
       hydrateAuth(response.data.token, response.data.user.email, response.data.user.name);
-      return true;
-    } catch (_error) {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: getApiErrorMessage(error, 'Google login failed'),
+        code: getApiErrorCode(error),
+      };
     }
   }, [hydrateAuth]);
 
@@ -207,9 +221,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setBalance(response.data.portfolio.balance);
       setHoldings(response.data.portfolio.holdings);
       setTrades((prev) => [response.data.trade, ...prev]);
-      return true;
-    } catch (_error) {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: getApiErrorMessage(error, 'Trade could not be executed'),
+        code: getApiErrorCode(error),
+      };
     }
   }, []);
 
@@ -219,28 +237,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const effectiveScenario = input?.scenarioId ?? scenarioId;
     const effectiveSymbol = input?.symbol ?? selectedStock;
     const effectivePortfolioId = input?.portfolioId ?? activePortfolioId;
+    try {
+      const response = await api.post('/sim/init', {
+        scenarioId: effectiveScenario,
+        symbol: effectiveSymbol,
+        portfolioId: effectivePortfolioId ?? undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      });
 
-    const response = await api.post('/sim/init', {
-      scenarioId: effectiveScenario,
-      symbol: effectiveSymbol,
-      portfolioId: effectivePortfolioId ?? undefined,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-    });
-
-    const nextCandles = response.data.simulation.candles ?? [];
-    setCandles(nextCandles);
-    setAllStockCandles((prev) => ({ ...prev, [effectiveSymbol]: nextCandles }));
-    setDataSource(response.data.source);
-    setTotalCandles(response.data.simulation.totalCandles);
-    setCurrentCandleIndex(response.data.simulation.currentIndex);
-    setIsPlaying(response.data.simulation.isPlaying);
-    setPlaySpeed(response.data.simulation.playSpeed);
-    setBalance(response.data.portfolio.balance);
-    setCurrency(response.data.portfolio.currency);
-    setHoldings(response.data.portfolio.holdings);
-    setTrades(response.data.trades);
-    setIsInitializingSimulation(false);
+      const nextCandles = response.data.simulation.candles ?? [];
+      setCandles(nextCandles);
+      setAllStockCandles((prev) => ({ ...prev, [effectiveSymbol]: nextCandles }));
+      setDataSource(response.data.source);
+      setTotalCandles(response.data.simulation.totalCandles);
+      setCurrentCandleIndex(response.data.simulation.currentIndex);
+      setIsPlaying(response.data.simulation.isPlaying);
+      setPlaySpeed(response.data.simulation.playSpeed);
+      setBalance(response.data.portfolio.balance);
+      setCurrency(response.data.portfolio.currency);
+      setHoldings(response.data.portfolio.holdings);
+      setTrades(response.data.trades);
+    } finally {
+      setIsInitializingSimulation(false);
+    }
   }, [isAuthenticated, scenarioId, selectedStock, activePortfolioId, startDate, endDate]);
 
   const callControl = useCallback(async (action: 'play' | 'pause' | 'step-forward' | 'step-backward', speed?: number) => {
@@ -289,9 +309,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHoldings(response.data.holdings ?? []);
       setBalance(response.data.balance ?? INITIAL_BALANCE);
       setCurrency(response.data.currency ?? 'USD');
-      return true;
-    } catch (_error) {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: getApiErrorMessage(error, 'Portfolio CSV import failed'),
+        code: getApiErrorCode(error),
+      };
     }
   }, []);
 
