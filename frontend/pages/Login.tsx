@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 import { useApp } from '@/context/AppContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import BrandLottie from '@/components/BrandLottie';
 import PageBirdsCloudsBackground from '@/components/background/PageBirdsCloudsBackground';
@@ -44,12 +44,17 @@ function Particles() {
 export default function Login({ mode = 'login' }: LoginProps) {
   const { login, googleLogin } = useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignup, setIsSignup] = useState(mode === 'signup');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const showFullscreenLoader = isSubmitting || isGoogleLoading;
+  const redirectParam = searchParams.get('redirect');
+  const redirectTarget = redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+    ? redirectParam
+    : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +63,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
     setIsSubmitting(false);
     if (result.ok) {
       toast.success(isSignup ? 'Account created successfully' : 'Login successful');
-      navigate('/homepage');
+      navigate(redirectTarget ?? '/homepage');
       return;
     }
     toast.error(result.message ?? 'Authentication failed');
@@ -71,7 +76,7 @@ export default function Login({ mode = 'login' }: LoginProps) {
     setIsGoogleLoading(false);
     if (result.ok) {
       toast.success('Google login successful');
-      navigate('/homepage');
+      navigate(redirectTarget ?? '/homepage');
       return;
     }
     toast.error(result.message ?? 'Google login failed');
@@ -208,7 +213,12 @@ export default function Login({ mode = 'login' }: LoginProps) {
           <button
             onClick={() => {
               setIsSignup(!isSignup);
-              navigate(isSignup ? '/login' : '/signup');
+              const nextPath = isSignup ? '/login' : '/signup';
+              if (redirectTarget) {
+                navigate(`${nextPath}?redirect=${encodeURIComponent(redirectTarget)}`);
+                return;
+              }
+              navigate(nextPath);
             }}
             className="text-primary hover:underline"
           >

@@ -15,7 +15,7 @@ interface NavItem {
 
 interface FeatureMenuItem {
   label: string;
-  action: () => void;
+  path: string;
 }
 
 export default function GlobalNavbar() {
@@ -28,6 +28,11 @@ export default function GlobalNavbar() {
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
+
+  const goToAuthGate = useCallback((targetPath: string, mode: "login" | "signup" = "login") => {
+    const redirect = encodeURIComponent(targetPath);
+    navigate(`/${mode}?redirect=${redirect}`);
+  }, [navigate]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 22);
@@ -91,12 +96,12 @@ export default function GlobalNavbar() {
 
   const featureMenuItems: FeatureMenuItem[] = useMemo(() => (
     [
-      { label: "Dashboard", action: () => navigate("/dashboard") },
-      { label: "Portfolio", action: () => navigate("/portfolio/create") },
-      { label: "Assets", action: () => navigate("/portfolio/create") },
-      { label: "Scenarios", action: () => navigate("/simulation") },
+      { label: "Dashboard", path: "/dashboard" },
+      { label: "Portfolio", path: "/portfolio/create" },
+      { label: "Assets", path: "/portfolio/create" },
+      { label: "Scenarios", path: "/simulation" },
     ]
-  ), [navigate]);
+  ), []);
 
   const mobilePrimaryNavItems: NavItem[] = useMemo(() => {
     if (!isAuthenticated) {
@@ -106,16 +111,16 @@ export default function GlobalNavbar() {
     return loggedInNavItems;
   }, [homeNavItem, isAuthenticated, loggedInNavItems]);
 
-  const runFeatureMenuAction = useCallback((action: () => void) => {
+  const runFeatureMenuAction = useCallback((targetPath: string) => {
     setFeaturesOpen(false);
     setMobileFeaturesOpen(false);
     setMobileMenuOpen(false);
     if (!isAuthenticated) {
-      navigate("/login");
+      goToAuthGate(targetPath);
       return;
     }
-    action();
-  }, [isAuthenticated, navigate]);
+    navigate(targetPath);
+  }, [goToAuthGate, isAuthenticated, navigate]);
 
   const runMobileItemAction = useCallback((action: () => void) => {
     setMobileMenuOpen(false);
@@ -205,7 +210,7 @@ export default function GlobalNavbar() {
                         <button
                           key={item.label}
                           type="button"
-                          onClick={() => runFeatureMenuAction(item.action)}
+                          onClick={() => runFeatureMenuAction(item.path)}
                           className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground/90 transition-colors hover:bg-secondary/45 hover:text-foreground"
                         >
                           {item.label}
@@ -425,7 +430,7 @@ export default function GlobalNavbar() {
                             <button
                               key={item.label}
                               type="button"
-                              onClick={() => runFeatureMenuAction(item.action)}
+                              onClick={() => runFeatureMenuAction(item.path)}
                               className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
                             >
                               {item.label}

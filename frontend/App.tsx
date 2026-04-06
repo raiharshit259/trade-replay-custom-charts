@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import GlobalLoader from "@/components/GlobalLoader";
 import GlobalNavbar from "@/components/GlobalNavbar";
 import { AppProvider } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -19,6 +20,18 @@ import Homepage from "./pages/Homepage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const { isAuthenticated } = useApp();
+  const location = useLocation();
+
+  if (isAuthenticated) {
+    return children;
+  }
+
+  const redirectTarget = `${location.pathname}${location.search}${location.hash}`;
+  return <Navigate to={`/login?redirect=${encodeURIComponent(redirectTarget)}`} replace />;
+}
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -40,11 +53,11 @@ function AnimatedRoutes() {
             <Route path="/homepage" element={<Homepage />} />
             <Route path="/login" element={<Login mode="login" />} />
             <Route path="/signup" element={<Login mode="signup" />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/portfolio/create" element={<CreatePortfolio />} />
-            <Route path="/portfolio/edit/:portfolioId" element={<EditPortfolio />} />
-            <Route path="/simulation" element={<Simulation />} />
-            <Route path="/live-market" element={<LiveMarket />} />
+            <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+            <Route path="/portfolio/create" element={<RequireAuth><CreatePortfolio /></RequireAuth>} />
+            <Route path="/portfolio/edit/:portfolioId" element={<RequireAuth><EditPortfolio /></RequireAuth>} />
+            <Route path="/simulation" element={<RequireAuth><Simulation /></RequireAuth>} />
+            <Route path="/live-market" element={<RequireAuth><LiveMarket /></RequireAuth>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </motion.div>

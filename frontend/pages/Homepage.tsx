@@ -16,6 +16,11 @@ export default function Homepage() {
   const { isAuthenticated } = useApp();
   const [vantaReady, setVantaReady] = useState(false);
 
+  const goToAuthGate = (targetPath: string) => {
+    const redirect = encodeURIComponent(targetPath);
+    navigate(`/login?redirect=${redirect}`);
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -124,7 +129,13 @@ export default function Homepage() {
           >
             <button
               type="button"
-              onClick={() => navigate(isAuthenticated ? "/dashboard" : "/login")}
+              onClick={() => {
+                if (isAuthenticated) {
+                  navigate("/live-market");
+                  return;
+                }
+                goToAuthGate("/live-market");
+              }}
               className="group relative inline-flex items-center gap-2.5 rounded-xl bg-primary px-8 py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_30px_hsl(var(--neon-blue)/0.3)] transition-all hover:shadow-[0_0_50px_hsl(var(--neon-blue)/0.5)] hover:scale-[1.02] active:scale-[0.98]"
             >
               Start Trading
@@ -132,7 +143,13 @@ export default function Homepage() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => {
+                if (isAuthenticated) {
+                  navigate("/dashboard");
+                  return;
+                }
+                goToAuthGate("/dashboard");
+              }}
               className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/30 px-7 py-3.5 text-sm font-medium text-foreground backdrop-blur-sm transition-all hover:bg-secondary/50 hover:border-primary/30"
             >
               View Dashboard
