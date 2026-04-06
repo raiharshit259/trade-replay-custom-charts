@@ -139,7 +139,7 @@ export default function LiveMarket() {
 
   return (
     <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
-      <PageBirdsCloudsBackground showShellLayers />
+      <PageBirdsCloudsBackground showShellLayers showBirds={false} />
 
       <main className="px-3 pt-5 pb-8 relative z-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

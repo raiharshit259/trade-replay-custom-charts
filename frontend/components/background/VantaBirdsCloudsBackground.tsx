@@ -5,6 +5,7 @@ interface VantaBirdsCloudsBackgroundProps {
   wrapperClassName?: string;
   cloudsClassName?: string;
   birdsClassName?: string;
+  showBirds?: boolean;
   onReadyChange?: (ready: boolean) => void;
 }
 
@@ -59,6 +60,7 @@ export default function VantaBirdsCloudsBackground({
   wrapperClassName = "absolute inset-0 pointer-events-none",
   cloudsClassName = defaultCloudsClassName,
   birdsClassName = defaultBirdsClassName,
+  showBirds = true,
   onReadyChange,
 }: VantaBirdsCloudsBackgroundProps) {
   const { theme } = useTheme();
@@ -71,7 +73,7 @@ export default function VantaBirdsCloudsBackground({
     let disposed = false;
 
     const init = async () => {
-      if (typeof window === "undefined" || !cloudsRef.current || !birdsRef.current) return;
+      if (typeof window === "undefined" || !cloudsRef.current || (showBirds && !birdsRef.current)) return;
 
       try {
         await loadScript("https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js");
@@ -80,11 +82,11 @@ export default function VantaBirdsCloudsBackground({
           loadScript("https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.clouds.min.js"),
         ]);
 
-        if (disposed || !cloudsRef.current || !birdsRef.current) return;
+        if (disposed || !cloudsRef.current || (showBirds && !birdsRef.current)) return;
 
         const makeClouds = window.VANTA?.CLOUDS;
-        const makeBirds = window.VANTA?.BIRDS;
-        if (!makeClouds || !makeBirds) return;
+        const makeBirds = showBirds ? window.VANTA?.BIRDS : undefined;
+        if (!makeClouds || (showBirds && !makeBirds)) return;
 
         cloudsEffectRef.current = makeClouds({
           el: cloudsRef.current,
@@ -101,25 +103,27 @@ export default function VantaBirdsCloudsBackground({
           speed: 0.8,
         }) ?? null;
 
-        birdsEffectRef.current = makeBirds({
-          el: birdsRef.current,
-          mouseControls: true,
-          touchControls: true,
-          gyroControls: false,
-          backgroundColor: theme === "dark" ? 0x000000 : 0xffffff,
-          color1: theme === "dark" ? 0x3b82f6 : 0x1d4ed8,
-          color2: theme === "dark" ? 0x00d1ff : 0x0284c7,
-          colorMode: "varianceGradient",
-          quantity: 4,
-          birdSize: 1.1,
-          wingSpan: 30,
-          speedLimit: 4,
-          separation: 25,
-          alignment: 25,
-          cohesion: 20,
-          scale: 1,
-          scaleMobile: 1,
-        }) ?? null;
+        if (showBirds && makeBirds && birdsRef.current) {
+          birdsEffectRef.current = makeBirds({
+            el: birdsRef.current,
+            mouseControls: true,
+            touchControls: true,
+            gyroControls: false,
+            backgroundColor: theme === "dark" ? 0x000000 : 0xffffff,
+            color1: theme === "dark" ? 0x3b82f6 : 0x1d4ed8,
+            color2: theme === "dark" ? 0x00d1ff : 0x0284c7,
+            colorMode: "varianceGradient",
+            quantity: 4,
+            birdSize: 1.1,
+            wingSpan: 30,
+            speedLimit: 4,
+            separation: 25,
+            alignment: 25,
+            cohesion: 20,
+            scale: 1,
+            scaleMobile: 1,
+          }) ?? null;
+        }
 
       } catch {
         // Keep app usable even when animation init fails.
@@ -138,12 +142,14 @@ export default function VantaBirdsCloudsBackground({
       cloudsEffectRef.current?.destroy?.();
       cloudsEffectRef.current = null;
     };
-  }, [onReadyChange, theme]);
+  }, [onReadyChange, showBirds, theme]);
 
   return (
     <div className={wrapperClassName} aria-hidden="true">
       <div ref={cloudsRef} className={cloudsClassName} />
-      <div ref={birdsRef} className={`${birdsClassName} ${theme === "dark" ? "mix-blend-screen" : "mix-blend-multiply"}`} style={{ background: "transparent" }} />
+      {showBirds ? (
+        <div ref={birdsRef} className={`${birdsClassName} ${theme === "dark" ? "mix-blend-screen" : "mix-blend-multiply"}`} style={{ background: "transparent" }} />
+      ) : null}
     </div>
   );
 }

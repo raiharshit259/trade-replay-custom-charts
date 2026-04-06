@@ -3,6 +3,7 @@ import VantaBirdsCloudsBackground from "@/components/background/VantaBirdsClouds
 interface PageBirdsCloudsBackgroundProps {
   showShellLayers?: boolean;
   showGradientOverlay?: boolean;
+  showBirds?: boolean;
   cloudsClassName?: string;
   birdsClassName?: string;
   onReadyChange?: (ready: boolean) => void;
@@ -11,6 +12,7 @@ interface PageBirdsCloudsBackgroundProps {
 export default function PageBirdsCloudsBackground({
   showShellLayers = false,
   showGradientOverlay = false,
+  showBirds = true,
   cloudsClassName,
   birdsClassName,
   onReadyChange,
@@ -27,6 +29,7 @@ export default function PageBirdsCloudsBackground({
       ) : null}
 
       <VantaBirdsCloudsBackground
+        showBirds={showBirds}
         cloudsClassName={cloudsClassName}
         birdsClassName={birdsClassName}
         onReadyChange={onReadyChange}
