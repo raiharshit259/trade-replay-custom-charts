@@ -154,14 +154,34 @@ export default function CreatePortfolio() {
       return;
     }
 
+    if (!csvFile.name.toLowerCase().endsWith(".csv")) {
+      setFormError("Only CSV files are supported.");
+      toast.error("Only CSV files are allowed");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const data = new FormData();
-      data.append("file", csvFile);
-      data.append("name", name.trim() || "Imported Portfolio");
-      data.append("baseCurrency", baseCurrency);
-      await api.post("/portfolio/import", data, {
-        headers: { "Content-Type": "multipart/form-data" },
+      const uploadUrlResponse = await api.post<{ url: string; key: string }>("/upload-url", {
+        fileName: csvFile.name,
+      });
+
+      const { url, key } = uploadUrlResponse.data;
+
+      const uploadResponse = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "text/csv" },
+        body: csvFile,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("CSV upload to storage failed");
+      }
+
+      await api.post("/portfolio/import", {
+        s3Key: key,
+        name: name.trim() || "Imported Portfolio",
+        baseCurrency,
       });
 
       toast.success("Portfolio imported from CSV");

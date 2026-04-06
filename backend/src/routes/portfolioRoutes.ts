@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../middlewares/verifyToken";
-import { createPortfolioController, portfolioCsvUploadMiddleware } from "../controllers/portfolioController";
+import { createPortfolioController } from "../controllers/portfolioController";
 
 export function createPortfolioRoutes() {
   const router = Router();
@@ -12,7 +12,8 @@ export function createPortfolioRoutes() {
   router.get("/:portfolioId", controller.getById);
   router.post("/", controller.create);
   router.put("/:portfolioId", controller.update);
-  router.post("/import", portfolioCsvUploadMiddleware, controller.importCsv);
+  router.post("/upload-url", controller.generateUploadUrl);
+  router.post("/import", controller.importCsv);
 
   return router;
 }

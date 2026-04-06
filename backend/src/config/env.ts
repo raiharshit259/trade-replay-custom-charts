@@ -43,5 +43,9 @@ export const env = {
   JWT_SECRET: readProfileVar("JWT_SECRET", "dev-secret"),
   ALPHA_VANTAGE_KEY: readProfileVar("ALPHA_VANTAGE_KEY", ""),
   GOOGLE_CLIENT_ID: readProfileVar("GOOGLE_CLIENT_ID", ""),
+  AWS_REGION: readProfileVar("AWS_REGION", ""),
+  AWS_S3_BUCKET: readProfileVar("AWS_S3_BUCKET", ""),
+  AWS_ACCESS_KEY_ID: readProfileVar("AWS_ACCESS_KEY_ID", ""),
+  AWS_SECRET_ACCESS_KEY: readProfileVar("AWS_SECRET_ACCESS_KEY", ""),
   USD_TO_INR: Number(readProfileVar("USD_TO_INR", "83.5")),
 };

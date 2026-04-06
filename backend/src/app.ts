@@ -10,6 +10,8 @@ import { createSimulationRoutes } from "./routes/simulationRoutes";
 import { createLiveMarketRoutes } from "./routes/liveMarketRoutes";
 import { createPortfolioRoutes } from "./routes/portfolioRoutes";
 import { createTradeRoutes } from "./routes/tradeRoutes";
+import { verifyToken } from "./middlewares/verifyToken";
+import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
@@ -52,9 +54,13 @@ export function createApp() {
   app.use(express.json());
   app.use(requestLogger);
 
+  const portfolioController = createPortfolioController();
+
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
   });
+
+  app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
 
   app.use("/api/auth", authRoutes);
   app.use("/api/sim", createSimulationRoutes(engine));
