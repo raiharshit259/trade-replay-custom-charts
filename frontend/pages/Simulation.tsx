@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
 import { scenarios } from '@/data/stockData';
-import TradingChart from '@/components/chart/TradingChart';
+import SimChart from '@/components/simulation/SimChart';
 import TradingPanel from '@/components/simulation/TradingPanel';
 import PortfolioPanel from '@/components/simulation/PortfolioPanel';
 import TradeHistory from '@/components/simulation/TradeHistory';
@@ -109,7 +109,7 @@ export default function Simulation() {
           className="flex-[7]"
         >
           <InteractiveSurface className="glass-strong rounded-xl overflow-hidden gradient-border card-lift h-full">
-            <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+            <SimChart data={candles} visibleCount={currentCandleIndex + 1} />
           </InteractiveSurface>
         </motion.div>
 
@@ -142,7 +142,7 @@ export default function Simulation() {
         {mobileTab === 'chart' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="h-[60vh]">
             <InteractiveSurface className="glass-strong rounded-xl overflow-hidden h-full gradient-border">
-              <TradingChart data={candles} visibleCount={currentCandleIndex + 1} symbol={selectedStock} />
+              <SimChart data={candles} visibleCount={currentCandleIndex + 1} />
             </InteractiveSurface>
           </motion.div>
         )}

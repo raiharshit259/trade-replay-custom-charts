@@ -6,7 +6,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import GlobalLoader from "@/components/GlobalLoader";
+import CursorGlow from "@/components/CursorGlow";
 import { AppProvider } from "@/context/AppContext";
+import Homepage from "./pages/Homepage";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Simulation from "./pages/Simulation";
@@ -38,7 +40,9 @@ function AnimatedRoutes() {
           transition={{ duration: 0.38, ease: "easeOut" }}
         >
           <Routes location={location}>
-            <Route path="/" element={<Login mode="login" />} />
+            <Route path="/" element={<Homepage />} />
+            <Route path="/homepage" element={<Homepage />} />
+            <Route path="/login" element={<Login mode="login" />} />
             <Route path="/signup" element={<Login mode="signup" />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/portfolio/create" element={<CreatePortfolio />} />
@@ -67,6 +71,7 @@ const App = () => (
         />
         <BrowserRouter>
           <div className="futuristic-shell">
+            <CursorGlow />
             <div className="ambient-layer ambient-layer--one" aria-hidden="true" />
             <div className="ambient-layer ambient-layer--two" aria-hidden="true" />
             <div className="ambient-layer ambient-layer--three" aria-hidden="true" />
