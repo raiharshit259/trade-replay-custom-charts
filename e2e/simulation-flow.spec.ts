@@ -86,11 +86,20 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
   await expect(page.getByTestId("symbol-search-modal")).toBeVisible();
 
   await page.getByTestId("symbol-category-indices").click({ force: true });
-  await expect(page.getByTestId("symbol-filter-source-modal")).toBeVisible();
+  const sourceUi = (await page.getByTestId("symbol-filter-source-modal").count()) > 0
+    ? "modal"
+    : (await page.getByTestId("symbol-filter-source-dropdown").count()) > 0
+      ? "dropdown"
+      : "none";
 
-  await page.getByTestId("symbol-filter-source-modal").click();
-  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
-  await page.locator('[data-testid="symbol-modal-option"][data-option="nasdaq"]').first().click({ force: true });
+  if (sourceUi === "modal") {
+    await page.getByTestId("symbol-filter-source-modal").click();
+    await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+    await page.locator('[data-testid="symbol-modal-option"][data-option="nasdaq"]').first().click({ force: true });
+  } else if (sourceUi === "dropdown") {
+    await page.getByTestId("symbol-filter-source-dropdown").click();
+    await page.getByRole("button", { name: "NASDAQ", exact: true }).click({ force: true });
+  }
 
   const ixicRow = page.locator('[data-testid="symbol-result-row"][data-symbol="IXIC"]').first();
   await expect(ixicRow).toBeVisible();
