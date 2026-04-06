@@ -25,7 +25,7 @@ export default function ObjectTreePanel({
   onTogglePanel,
 }: ObjectTreePanelProps) {
   return (
-    <aside className={`rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${open ? 'max-h-[40vh] opacity-100' : 'max-h-[52px] opacity-95'} w-full` : `absolute bottom-3 right-3 z-30 w-[320px] ${open ? 'max-h-[42vh] opacity-100' : 'max-h-[58px] opacity-95'}`}`}>
+    <aside className={`w-full rounded-xl border border-primary/25 bg-background/85 p-2 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${open ? 'max-h-[40vh] opacity-100' : 'max-h-[52px] opacity-95'}` : `${open ? 'max-h-[42vh] opacity-100' : 'max-h-[58px] opacity-95'}`} `}>
       <div className="mb-1 flex items-center justify-between">
         <button type="button" onClick={onTogglePanel} className="inline-flex items-center gap-2 rounded-md px-1.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground hover:text-foreground">
           <span>Object Tree</span>
