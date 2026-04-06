@@ -8,13 +8,22 @@ const hasAwsConfig = Boolean(
   env.AWS_REGION && env.AWS_S3_BUCKET && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY,
 );
 
-export const s3 = new S3Client({
-  region: env.AWS_REGION,
-  credentials: {
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-  },
-});
+let s3Client: S3Client | null = null;
+
+function getS3Client(): S3Client {
+  ensureAwsConfigured();
+  if (s3Client) return s3Client;
+
+  s3Client = new S3Client({
+    region: env.AWS_REGION,
+    credentials: {
+      accessKeyId: env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+
+  return s3Client;
+}
 
 function ensureAwsConfigured(): void {
   if (!hasAwsConfig) {
@@ -34,7 +43,6 @@ export function buildPortfolioUploadKey(userId: string, fileName: string): strin
 }
 
 export async function generatePortfolioUploadUrl(userId: string, fileName: string): Promise<{ url: string; key: string }> {
-  ensureAwsConfigured();
   const key = buildPortfolioUploadKey(userId, fileName);
 
   const command = new PutObjectCommand({
@@ -43,7 +51,7 @@ export async function generatePortfolioUploadUrl(userId: string, fileName: strin
     ContentType: "text/csv",
   });
 
-  const url = await getSignedUrl(s3, command, { expiresIn: 60 });
+  const url = await getSignedUrl(getS3Client(), command, { expiresIn: 60 });
   return { url, key };
 }
 
@@ -55,7 +63,6 @@ function assertKeyOwnership(userId: string, key: string): void {
 }
 
 export async function downloadPortfolioCsv(userId: string, key: string): Promise<string> {
-  ensureAwsConfigured();
   assertKeyOwnership(userId, key);
 
   const command = new GetObjectCommand({
@@ -63,7 +70,7 @@ export async function downloadPortfolioCsv(userId: string, key: string): Promise
     Key: key,
   });
 
-  const response = await s3.send(command);
+  const response = await getS3Client().send(command);
   const body = response.Body;
   if (!body) {
     throw new Error("S3_OBJECT_EMPTY");
