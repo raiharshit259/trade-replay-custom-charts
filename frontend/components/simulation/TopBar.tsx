@@ -104,6 +104,7 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
             className="h-4 w-4 rounded-full object-cover ring-1 ring-border/70"
           />
           <button
+            data-testid="scenario-symbol-trigger"
             type="button"
             onClick={() => setSymbolSearchOpen(true)}
             className="inline-flex min-w-[240px] items-center justify-between gap-3 rounded-md border border-border/70 bg-secondary/35 px-2.5 py-1.5 text-left hover:bg-secondary/55"
@@ -192,9 +193,9 @@ export default function TopBar({ totalCandles, currentDate }: TopBarProps) {
         onOpenChange={setSymbolSearchOpen}
         onSelect={(asset) => {
           setSelectedAssetMeta(asset);
-          setSelectedStock(asset.ticker);
+          setSelectedStock(asset.symbol);
           setTimeout(() => {
-            void initializeSimulation({ symbol: asset.ticker });
+            void initializeSimulation({ symbol: asset.symbol });
           }, 0);
         }}
       />

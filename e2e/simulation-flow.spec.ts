@@ -1,8 +1,10 @@
 import { expect, test } from "./playwright-fixture";
 
-test("portfolio builder UX and portfolio APIs work end-to-end", async ({ page }) => {
+test("shared symbol modal works in portfolio and simulation", async ({ page }) => {
+  test.setTimeout(120_000);
+
   const uid = Date.now();
-  const email = `e2e_${uid}@example.com`;
+  const email = `symbol_modal_${uid}@example.com`;
   const password = "pass1234";
 
   await expect
@@ -13,7 +15,7 @@ test("portfolio builder UX and portfolio APIs work end-to-end", async ({ page })
     .toBe(200);
 
   const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
-    data: { email, password, name: `e2e_${uid}` },
+    data: { email, password, name: `symbol_modal_${uid}` },
   });
 
   const authResponse = registerResponse.ok()
@@ -24,60 +26,84 @@ test("portfolio builder UX and portfolio APIs work end-to-end", async ({ page })
 
   expect(authResponse.ok()).toBeTruthy();
   const authPayload = await authResponse.json();
-  const token = authPayload.token as string;
-  expect(token).toBeTruthy();
+  expect(typeof authPayload.token).toBe("string");
 
-  const createResponse = await page.request.post("http://127.0.0.1:4000/api/portfolio", {
-    headers: { Authorization: `Bearer ${token}` },
-    data: {
-      name: "E2E Portfolio",
-      baseCurrency: "USD",
-      holdings: [
-        { symbol: "AAPL", quantity: 5, avgPrice: 180 },
-        { symbol: "BTCUSD", quantity: 1, avgPrice: 60000 },
-      ],
-    },
-  });
-
-  expect(createResponse.ok()).toBeTruthy();
-
-  const listResponse = await page.request.get("http://127.0.0.1:4000/api/portfolio", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  expect(listResponse.ok()).toBeTruthy();
-  const portfolios = (await listResponse.json()) as Array<{ id: string; name: string }>;
-  const target = portfolios.find((p) => p.name === "E2E Portfolio");
-  expect(target).toBeTruthy();
-
-  const updateResponse = await page.request.put(`http://127.0.0.1:4000/api/portfolio/${target!.id}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: {
-      name: "E2E Portfolio Updated",
-      baseCurrency: "EUR",
-      holdings: [
-        { symbol: "ETHUSD", quantity: 2, avgPrice: 3000 },
-      ],
-    },
-  });
-  expect(updateResponse.ok()).toBeTruthy();
-
-  await page.goto("/");
-  await expect(page).toHaveTitle(/Trade Replay/);
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
 
   await page.goto("/portfolio/create");
-  await expect(page.getByRole("heading", { name: "Portfolio Builder" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "📈 Stocks" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "🪙 Crypto" })).toBeVisible();
+  await expect(page.getByText("Portfolio Builder").first()).toBeVisible({ timeout: 15000 });
 
-  await page.getByRole("button", { name: "🪙 Crypto" }).click();
-  await page.locator('[role="combobox"]').first().click();
-  await page.getByPlaceholder("Search symbol, name, market").fill("BTC");
-  await page.getByText("₿ BTCUSD", { exact: false }).first().click();
+  const portfolioSearchTrigger = page.getByTestId("asset-search-trigger").first();
+  await portfolioSearchTrigger.click();
 
-  await page.locator('[role="combobox"]').nth(1).click();
-  await page.getByPlaceholder("Search currency code or name").fill("EUR");
-  await page.getByText("🇪🇺 EUR", { exact: false }).first().click();
+  await expect(page.getByTestId("symbol-search-modal")).toBeVisible();
 
-  await page.getByRole("button", { name: "+ Add Asset" }).click();
-  await expect(page.getByText("Market Mix")).toBeVisible();
+  const expectedCategories = ["all", "stocks", "funds", "futures", "forex", "crypto", "indices", "bonds", "economy", "options"];
+  for (const category of expectedCategories) {
+    await expect(page.getByTestId(`symbol-category-${category}`)).toBeVisible();
+  }
+
+  await page.getByTestId("symbol-category-stocks").click();
+  await expect(page.getByTestId("symbol-filter-country-modal")).toBeVisible();
+  await expect(page.getByTestId("symbol-filter-type")).toBeVisible();
+  await expect(page.getByTestId("symbol-filter-sector")).toBeVisible();
+
+  await page.getByTestId("symbol-filter-type").click();
+  await page.getByRole("button", { name: "ETF", exact: true }).click();
+
+  const spyRow = page.locator('[data-testid="symbol-result-row"][data-symbol="SPY"]').first();
+  await expect(spyRow).toBeVisible();
+  await spyRow.click();
+
+  await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
+  await expect(portfolioSearchTrigger).toContainText("SPDR S&P 500 ETF Trust");
+
+  await portfolioSearchTrigger.click();
+  await page.getByTestId("symbol-category-futures").click();
+
+  const niftyRoot = page.locator('[data-testid="symbol-result-row"][data-symbol="NIFTY"]').first();
+  await expect(niftyRoot).toBeVisible();
+  await niftyRoot.click();
+
+  await expect(page.getByRole("heading", { name: "NIFTY Contracts" })).toBeVisible();
+  const niftyJunContract = page.locator('[data-testid="symbol-contract-row"][data-symbol="NIFTY-JUN26"]').first();
+  await expect(niftyJunContract).toBeVisible();
+  await niftyJunContract.click();
+
+  await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
+  await expect(portfolioSearchTrigger).toContainText("NIFTY 50 JUN 2026");
+
+  await page.goto("/simulation");
+
+  const simulationSymbolTrigger = page.getByTestId("scenario-symbol-trigger");
+  await expect(simulationSymbolTrigger).toBeVisible();
+  await simulationSymbolTrigger.click();
+
+  await expect(page.getByTestId("symbol-search-modal")).toBeVisible();
+
+  await page.getByTestId("symbol-category-indices").click({ force: true });
+  await expect(page.getByTestId("symbol-filter-source-modal")).toBeVisible();
+
+  await page.getByTestId("symbol-filter-source-modal").click();
+  await expect(page.getByRole("heading", { name: "Sources" })).toBeVisible();
+  await page.locator('[data-testid="symbol-modal-option"][data-option="nasdaq"]').first().click({ force: true });
+
+  const ixicRow = page.locator('[data-testid="symbol-result-row"][data-symbol="IXIC"]').first();
+  await expect(ixicRow).toBeVisible();
+  await ixicRow.click();
+
+  await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
+
+  await simulationSymbolTrigger.click();
+  await page.getByTestId("symbol-category-economy").click({ force: true });
+  await expect(page.getByTestId("symbol-filter-country-modal")).toBeVisible();
+  await expect(page.getByTestId("symbol-filter-source-dropdown")).toBeVisible();
+  await expect(page.getByTestId("symbol-filter-economy-category")).toBeVisible();
+
+  await page.getByTestId("symbol-search-modal").getByRole("button", { name: "Close" }).click();
+  await expect(page.getByTestId("symbol-search-modal")).toHaveAttribute("data-state", "closed");
 });

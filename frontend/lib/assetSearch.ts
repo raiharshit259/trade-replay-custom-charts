@@ -23,6 +23,9 @@ export interface AssetSearchItem {
   iconUrl: string;
   logoUrl: string;
   source: string;
+  futureCategory?: string;
+  economyCategory?: string;
+  contracts?: AssetSearchItem[];
 }
 
 export interface AssetSearchResponse {
@@ -47,6 +50,8 @@ export interface AssetSearchFiltersResponse {
   sectors: AssetSearchFilterOption[];
   sources: AssetSearchFilterOption[];
   exchangeTypes: AssetSearchFilterOption[];
+  futureCategories: AssetSearchFilterOption[];
+  economyCategories: AssetSearchFilterOption[];
   sourceUiType?: "modal" | "dropdown";
 }
 
@@ -59,6 +64,8 @@ export async function searchAssets(params: {
   sector?: string;
   source?: string;
   exchangeType?: string;
+  futureCategory?: string;
+  economyCategory?: string;
   page?: number;
   limit?: number;
 }): Promise<AssetSearchResponse> {
@@ -72,6 +79,8 @@ export async function searchAssets(params: {
       sector: params.sector,
       source: params.source,
       exchangeType: params.exchangeType,
+      futureCategory: params.futureCategory,
+      economyCategory: params.economyCategory,
       page: params.page ?? 1,
       limit: params.limit ?? 25,
     },

@@ -3,7 +3,7 @@ import multer from "multer";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
 import { SimulationService } from "../services/simulationService";
-import { searchAssetCatalog } from "../services/assetCatalogService";
+import { fetchAssetCatalogFilters, searchAssetCatalog } from "../services/assetCatalogService";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { mapServiceError } from "../utils/serviceError";
@@ -112,11 +112,30 @@ export function createSimulationController(service: SimulationService) {
     },
 
     assets: async (req: AuthenticatedRequest, res: Response) => {
-      const query = typeof req.query.q === "string" ? req.query.q : "";
-      const market = typeof req.query.market === "string" ? req.query.market : undefined;
-      const assetType = typeof req.query.assetType === "string" ? req.query.assetType : undefined;
-      const assets = await searchAssetCatalog({ query, market, assetType });
-      res.json({ assets });
+      const payload = await searchAssetCatalog({
+        q: typeof req.query.q === "string" ? req.query.q : "",
+        market: typeof req.query.market === "string" ? req.query.market : undefined,
+        category: typeof req.query.category === "string" ? req.query.category : undefined,
+        assetType: typeof req.query.assetType === "string" ? req.query.assetType : undefined,
+        country: typeof req.query.country === "string" ? req.query.country : undefined,
+        type: typeof req.query.type === "string" ? req.query.type : undefined,
+        sector: typeof req.query.sector === "string" ? req.query.sector : undefined,
+        source: typeof req.query.source === "string" ? req.query.source : undefined,
+        exchangeType: typeof req.query.exchangeType === "string" ? req.query.exchangeType : undefined,
+        futureCategory: typeof req.query.futureCategory === "string" ? req.query.futureCategory : undefined,
+        economyCategory: typeof req.query.economyCategory === "string" ? req.query.economyCategory : undefined,
+        page: typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : undefined,
+        limit: typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : undefined,
+      });
+
+      res.json(payload);
+    },
+
+    assetFilters: async (req: AuthenticatedRequest, res: Response) => {
+      const payload = await fetchAssetCatalogFilters({
+        category: typeof req.query.category === "string" ? req.query.category : undefined,
+      });
+      res.json(payload);
     },
   };
 }

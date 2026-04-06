@@ -3,7 +3,7 @@ import { ChevronsUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AssetAvatar from "@/components/ui/AssetAvatar";
 import SymbolSearchModal from "@/components/simulation/SymbolSearchModal";
-import type { AssetSearchItem } from "@/lib/assetSearch";
+import type { AssetCategory, AssetSearchItem } from "@/lib/assetSearch";
 
 interface AssetSearchDropdownProps {
   value: string;
@@ -20,16 +20,20 @@ interface AssetSearchDropdownProps {
 export default function AssetSearchDropdown({
   value,
   selectedAsset,
+  marketFilter,
+  categoryFilter,
   onValueChange,
   placeholder = "Search assets globally",
 }: AssetSearchDropdownProps) {
   const [open, setOpen] = useState(false);
+  const preferredCategory = (categoryFilter ?? marketFilter) as AssetCategory | undefined;
 
   const selectedLabel = selectedAsset?.name ?? value;
 
   return (
     <>
       <Button
+        data-testid="asset-search-trigger"
         type="button"
         variant="outline"
         role="combobox"
@@ -47,6 +51,7 @@ export default function AssetSearchDropdown({
         open={open}
         selectedSymbol={value}
         onOpenChange={setOpen}
+        initialCategory={preferredCategory ?? "all"}
         onSelect={(item) => {
           onValueChange(item.symbol, item);
         }}

@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "@/context/AppContext";
 import { useTheme } from "@/context/ThemeContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { LogOut, Settings, User, Sun, Moon, Menu, X } from "lucide-react";
+import { LogOut, Settings, User, Sun, Moon, Menu, X, ChevronDown } from "lucide-react";
 import BrandLottie from "@/components/BrandLottie";
 
 interface NavItem {
   label: string;
   action: () => void;
-  activeMatch: (pathname: string) => boolean;
+  activeMatch: (pathname: string, hash: string) => boolean;
+}
+
+interface FeatureMenuItem {
+  label: string;
+  action: () => void;
 }
 
 export default function GlobalNavbar() {
@@ -20,7 +25,9 @@ export default function GlobalNavbar() {
   const { theme, toggleTheme } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileFeaturesOpen, setMobileFeaturesOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 22);
@@ -29,60 +36,104 @@ export default function GlobalNavbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const goToHash = (hash: string) => {
-    if (location.pathname !== "/") {
+  const goHome = useCallback(() => {
+    if (location.pathname !== "/" && location.pathname !== "/homepage") {
+      navigate("/");
+      return;
+    }
+
+    if (location.hash) {
+      navigate("/", { replace: true });
+    }
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [location.hash, location.pathname, navigate]);
+
+  const goToHash = useCallback((hash: string) => {
+    const onHomepage = location.pathname === "/" || location.pathname === "/homepage";
+    if (!onHomepage) {
       navigate(`/${hash}`);
       return;
     }
+
     const target = document.querySelector(hash);
     if (target instanceof HTMLElement) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  };
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
+    setMobileFeaturesOpen(false);
+    setFeaturesOpen(false);
   }, [location.pathname, location.hash]);
 
-  const desktopNavItems: NavItem[] = useMemo(() => {
-    if (!isAuthenticated) {
-      return [
-        { label: "Home", action: () => navigate("/"), activeMatch: (pathname) => pathname === "/" || pathname === "/homepage" },
-        { label: "Features", action: () => goToHash("#features"), activeMatch: (pathname) => pathname === "/" },
-        { label: "Markets", action: () => goToHash("#markets"), activeMatch: (pathname) => pathname === "/" },
-        { label: "Login", action: () => navigate("/login"), activeMatch: (pathname) => pathname.startsWith("/login") },
-        { label: "Signup", action: () => navigate("/signup"), activeMatch: (pathname) => pathname.startsWith("/signup") },
-      ];
+  const homeNavItem = useMemo<NavItem>(() => (
+    {
+      label: "Home",
+      action: goHome,
+      activeMatch: (pathname, hash) => (pathname === "/" || pathname === "/homepage") && hash !== "#markets",
     }
+  ), [goHome]);
 
+  const loggedInNavItems: NavItem[] = useMemo(() => {
     return [
-      { label: "Home", action: () => navigate("/"), activeMatch: (pathname) => pathname === "/" || pathname === "/homepage" },
       { label: "Dashboard", action: () => navigate("/dashboard"), activeMatch: (pathname) => pathname.startsWith("/dashboard") },
       { label: "Portfolio", action: () => navigate("/portfolio/create"), activeMatch: (pathname) => pathname.startsWith("/portfolio") },
       { label: "Scenarios", action: () => navigate("/simulation"), activeMatch: (pathname) => pathname.startsWith("/simulation") },
+      {
+        label: "Live Market",
+        action: () => goToHash("#markets"),
+        activeMatch: (pathname, hash) => (pathname === "/" || pathname === "/homepage") && hash === "#markets",
+      },
     ];
-  }, [isAuthenticated, navigate]);
+  }, [goToHash, navigate]);
 
-  const mobileMenuItems: NavItem[] = useMemo(() => {
-    const base: NavItem[] = [
-      { label: "Home", action: () => navigate("/"), activeMatch: (pathname) => pathname === "/" || pathname === "/homepage" },
-      { label: "Features", action: () => goToHash("#features"), activeMatch: (pathname) => pathname === "/" },
-      { label: "Markets", action: () => goToHash("#markets"), activeMatch: (pathname) => pathname === "/" },
-      { label: "Dashboard", action: () => navigate("/dashboard"), activeMatch: (pathname) => pathname.startsWith("/dashboard") },
-      { label: "Portfolio", action: () => navigate("/portfolio/create"), activeMatch: (pathname) => pathname.startsWith("/portfolio") },
-    ];
+  const featureMenuItems: FeatureMenuItem[] = useMemo(() => (
+    [
+      { label: "Dashboard", action: () => navigate("/dashboard") },
+      { label: "Portfolio", action: () => navigate("/portfolio/create") },
+      { label: "Assets", action: () => navigate("/portfolio/create") },
+      { label: "Scenarios", action: () => navigate("/simulation") },
+      { label: "Live Market", action: () => goToHash("#markets") },
+    ]
+  ), [goToHash, navigate]);
 
-    if (isAuthenticated) {
-      base.push({ label: "Profile", action: () => navigate("/dashboard"), activeMatch: () => false });
+  const mobilePrimaryNavItems: NavItem[] = useMemo(() => {
+    if (!isAuthenticated) {
+      return [homeNavItem];
     }
 
-    return base;
-  }, [isAuthenticated, navigate, location.pathname]);
+    return loggedInNavItems;
+  }, [homeNavItem, isAuthenticated, loggedInNavItems]);
 
-  const runMobileItemAction = (action: () => void) => {
+  const runFeatureMenuAction = useCallback((action: () => void) => {
+    setFeaturesOpen(false);
+    setMobileFeaturesOpen(false);
     setMobileMenuOpen(false);
+    if (!isAuthenticated) {
+      navigate("/login");
+      return;
+    }
     action();
+  }, [isAuthenticated, navigate]);
+
+  const runMobileItemAction = useCallback((action: () => void) => {
+    setMobileMenuOpen(false);
+    setMobileFeaturesOpen(false);
+    action();
+  }, []);
+
+  const desktopTabClasses = (active: boolean) => {
+    return `relative rounded-xl px-1 py-1 text-sm font-medium tracking-wide transition-colors duration-200 ${
+      active
+        ? "text-foreground"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
   };
+
+  const loginActive = location.pathname.startsWith("/login");
+  const signupActive = location.pathname.startsWith("/signup");
 
   return (
     <>
@@ -96,7 +147,7 @@ export default function GlobalNavbar() {
         <div className="relative z-[2] mx-auto flex w-full max-w-[1200px] items-center justify-between gap-2 md:gap-4">
           <button
             type="button"
-            onClick={() => navigate("/")}
+            onClick={goHome}
             className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-1 font-semibold tracking-wide text-foreground/95 transition-colors hover:text-foreground sm:gap-3"
           >
             <motion.div whileHover={{ scale: 1.03 }} transition={{ duration: 0.2 }}>
@@ -105,34 +156,88 @@ export default function GlobalNavbar() {
             <span className="font-display text-[1.1rem] leading-none font-bold text-foreground tracking-wide whitespace-nowrap sm:text-[1.5rem]">Trade Replay</span>
           </button>
 
-          <div className="hidden md:flex items-center gap-1.5 rounded-xl bg-secondary/35 p-1.5">
-            {desktopNavItems.map((item) => {
-              const active = item.activeMatch(location.pathname);
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={item.action}
-                  className={`relative rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                    active
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:drop-shadow-[0_0_8px_hsl(var(--neon-cyan)/0.4)]"
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="global-nav-active"
-                      className="absolute inset-0 -z-10 rounded-lg border border-primary/35 bg-primary/20 shadow-[0_0_16px_hsl(var(--neon-blue)/0.24)]"
-                      transition={{ duration: 0.24, ease: "easeOut" }}
-                    />
-                  )}
-                  {item.label}
-                </button>
-              );
-            })}
+          <div className="hidden md:flex items-center gap-4 lg:gap-6 rounded-2xl border border-border/55 bg-secondary/35 px-4 py-2">
+            {!isAuthenticated ? (
+              <div className="flex items-center gap-4 lg:gap-6">
+                {[homeNavItem].map((item) => {
+                  const active = item.activeMatch(location.pathname, location.hash);
+                  return (
+                    <button key={item.label} type="button" onClick={item.action} className={desktopTabClasses(active)}>
+                      {active && (
+                        <motion.span
+                          layoutId="global-nav-active"
+                          className="absolute inset-0 -z-10 rounded-xl border border-primary/35 bg-primary/20 shadow-[0_0_16px_hsl(var(--neon-blue)/0.24)]"
+                          transition={{ duration: 0.24, ease: "easeOut" }}
+                        />
+                      )}
+                      <span className="relative z-10 px-2 py-1">{item.label}</span>
+                    </button>
+                  );
+                })}
+
+                <Popover open={featuresOpen} onOpenChange={setFeaturesOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Open features menu"
+                      className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium tracking-wide transition-colors duration-200 ${
+                        featuresOpen
+                          ? "border border-primary/35 bg-primary/20 text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      Features
+                      <ChevronDown size={15} className={`transition-transform duration-200 ${featuresOpen ? "rotate-180" : "rotate-0"}`} />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="center"
+                    sideOffset={10}
+                    className="w-56 border-primary/30 bg-background/90 p-2 backdrop-blur-xl"
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.18, ease: "easeOut" }}
+                      className="space-y-1"
+                    >
+                      {featureMenuItems.map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => runFeatureMenuAction(item.action)}
+                          className="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground/90 transition-colors hover:bg-secondary/45 hover:text-foreground"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            ) : (
+              <div className="flex items-center gap-4 lg:gap-6">
+                {loggedInNavItems.map((item) => {
+                  const active = item.activeMatch(location.pathname, location.hash);
+                  return (
+                    <button key={item.label} type="button" onClick={item.action} className={desktopTabClasses(active)}>
+                      {active && (
+                        <motion.span
+                          layoutId="global-nav-active"
+                          className="absolute inset-0 -z-10 rounded-xl border border-primary/35 bg-primary/20 shadow-[0_0_16px_hsl(var(--neon-blue)/0.24)]"
+                          transition={{ duration: 0.24, ease: "easeOut" }}
+                        />
+                      )}
+                      <span className="relative z-10 px-2 py-1">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2.5 md:gap-3">
             <motion.button
               type="button"
               onClick={toggleTheme}
@@ -152,6 +257,33 @@ export default function GlobalNavbar() {
                 </motion.span>
               </AnimatePresence>
             </motion.button>
+
+            {!isAuthenticated && (
+              <div className="hidden md:flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => navigate("/login")}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-medium tracking-wide transition-colors ${
+                    loginActive
+                      ? "border border-primary/35 bg-primary/20 text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/45 hover:text-foreground"
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/signup")}
+                  className={`rounded-lg px-3.5 py-2 text-sm font-medium tracking-wide transition-colors ${
+                    signupActive
+                      ? "border border-primary/35 bg-primary/20 text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/45 hover:text-foreground"
+                  }`}
+                >
+                  Signup
+                </button>
+              </div>
+            )}
 
             {isAuthenticated && (
               <>
@@ -250,15 +382,15 @@ export default function GlobalNavbar() {
                 </button>
               </div>
 
-              <div className="space-y-1">
-                {mobileMenuItems.map((item) => {
-                  const active = item.activeMatch(location.pathname);
+              <div className="space-y-2">
+                {mobilePrimaryNavItems.map((item) => {
+                  const active = item.activeMatch(location.pathname, location.hash);
                   return (
                     <button
                       key={item.label}
                       type="button"
                       onClick={() => runMobileItemAction(item.action)}
-                      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-all ${
+                      className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium tracking-wide transition-all ${
                         active
                           ? "border border-primary/35 bg-primary/20 text-foreground"
                           : "text-muted-foreground hover:bg-secondary/45 hover:text-foreground"
@@ -268,6 +400,43 @@ export default function GlobalNavbar() {
                     </button>
                   );
                 })}
+
+                {!isAuthenticated && (
+                  <div className="rounded-xl border border-border/60 bg-secondary/20">
+                    <button
+                      type="button"
+                      onClick={() => setMobileFeaturesOpen((prev) => !prev)}
+                      aria-expanded={mobileFeaturesOpen}
+                      className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm font-medium tracking-wide text-foreground transition-colors hover:bg-secondary/45"
+                    >
+                      <span>Features</span>
+                      <ChevronDown size={16} className={`transition-transform duration-200 ${mobileFeaturesOpen ? "rotate-180" : "rotate-0"}`} />
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {mobileFeaturesOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, height: 0 }}
+                          animate={{ opacity: 1, y: 0, height: "auto" }}
+                          exit={{ opacity: 0, y: -6, height: 0 }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                          className="space-y-1 overflow-hidden border-t border-border/60 px-2 py-2"
+                        >
+                          {featureMenuItems.map((item) => (
+                            <button
+                              key={item.label}
+                              type="button"
+                              onClick={() => runFeatureMenuAction(item.action)}
+                              className="flex w-full items-center rounded-md px-2.5 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary/45 hover:text-foreground"
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {isAuthenticated ? (
                   <button

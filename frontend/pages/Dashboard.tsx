@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
 import { useApp } from "@/context/AppContext";
-import { useTheme } from "@/context/ThemeContext";
 import { api } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api";
 import { scenarios } from "@/data/stockData";
 import { toast } from "sonner";
 import BrandLottie from "@/components/BrandLottie";
+import PageBirdsCloudsBackground from "@/components/background/PageBirdsCloudsBackground";
 import ScrollReveal from "@/components/ScrollReveal";
 import InteractiveSurface from "@/components/ui/InteractiveSurface";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
@@ -27,90 +27,8 @@ interface SavedPortfolio {
   pnlPercent: number;
 }
 
-type VantaBirdsOptions = {
-  el: HTMLElement;
-  mouseControls: boolean;
-  touchControls: boolean;
-  gyroControls: boolean;
-  backgroundColor: number;
-  color1: number;
-  color2: number;
-  colorMode: string;
-  quantity: number;
-  birdSize: number;
-  wingSpan: number;
-  speedLimit: number;
-  separation: number;
-  alignment: number;
-  cohesion: number;
-  scale: number;
-  scaleMobile: number;
-};
-
-type VantaCloudsOptions = {
-  el: HTMLElement;
-  mouseControls: boolean;
-  touchControls: boolean;
-  gyroControls: boolean;
-  backgroundColor: number;
-  skyColor: number;
-  cloudColor: number;
-  cloudShadowColor: number;
-  sunColor: number;
-  sunGlareColor: number;
-  sunlightColor: number;
-  speed: number;
-};
-
-type VantaEffect = {
-  destroy: () => void;
-};
-
-declare global {
-  interface Window {
-    VANTA?: {
-      BIRDS?: (config: VantaBirdsOptions) => VantaEffect;
-      CLOUDS?: (config: VantaCloudsOptions) => VantaEffect;
-    };
-  }
-}
-
-const loadScript = (src: string) =>
-  new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector(`script[data-vanta-src="${src}"]`) as HTMLScriptElement | null;
-    if (existing) {
-      if (existing.dataset.loaded === "true") {
-        resolve();
-        return;
-      }
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error(`Failed loading ${src}`)), { once: true });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.dataset.vantaSrc = src;
-    script.addEventListener(
-      "load",
-      () => {
-        script.dataset.loaded = "true";
-        resolve();
-      },
-      { once: true }
-    );
-    script.addEventListener("error", () => reject(new Error(`Failed loading ${src}`)), { once: true });
-    document.head.appendChild(script);
-  });
-
 export default function Dashboard() {
   const { isAuthenticated } = useApp();
-  const { theme } = useTheme();
-  const birdsRef = useRef<HTMLDivElement | null>(null);
-  const cloudsRef = useRef<HTMLDivElement | null>(null);
-  const birdsEffectRef = useRef<VantaEffect | null>(null);
-  const cloudsEffectRef = useRef<VantaEffect | null>(null);
   const navigate = useNavigate();
   const [items, setItems] = useState<SavedPortfolio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -131,58 +49,6 @@ export default function Dashboard() {
   );
 
   const totalAum = useMemo(() => items.reduce((acc, portfolio) => acc + portfolio.totalValue, 0), [items]);
-
-  const initVantaBackground = useCallback(async (isDark: boolean) => {
-    birdsEffectRef.current?.destroy();
-    birdsEffectRef.current = null;
-    cloudsEffectRef.current?.destroy();
-    cloudsEffectRef.current = null;
-
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js");
-    await Promise.all([
-      loadScript("https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.birds.min.js"),
-      loadScript("https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.clouds.min.js"),
-    ]);
-
-    if (cloudsRef.current && window.VANTA?.CLOUDS) {
-      cloudsEffectRef.current = window.VANTA.CLOUDS({
-        el: cloudsRef.current,
-        mouseControls: true,
-        touchControls: true,
-        gyroControls: false,
-        backgroundColor: isDark ? 0x050d1a : 0x8baac6,
-        skyColor: isDark ? 0x0a1628 : 0x6b94b8,
-        cloudColor: isDark ? 0x0e2244 : 0xb0cfea,
-        cloudShadowColor: isDark ? 0x06101e : 0x5a7d9e,
-        sunColor: isDark ? 0x1a3a66 : 0xffd080,
-        sunGlareColor: isDark ? 0x0d2040 : 0xf5c860,
-        sunlightColor: isDark ? 0x142d52 : 0xfff0c0,
-        speed: 0.8,
-      });
-    }
-
-    if (birdsRef.current && window.VANTA?.BIRDS) {
-      birdsEffectRef.current = window.VANTA.BIRDS({
-        el: birdsRef.current,
-        mouseControls: true,
-        touchControls: true,
-        gyroControls: false,
-        backgroundColor: isDark ? 0x000000 : 0xffffff,
-        color1: isDark ? 0x3b82f6 : 0x1d4ed8,
-        color2: isDark ? 0x00d1ff : 0x0284c7,
-        colorMode: "varianceGradient",
-        quantity: 4,
-        birdSize: 1.1,
-        wingSpan: 30,
-        speedLimit: 4,
-        separation: 25,
-        alignment: 25,
-        cohesion: 20,
-        scale: 1.0,
-        scaleMobile: 1.0,
-      });
-    }
-  }, []);
 
   const loadPortfolios = async () => {
     setIsLoading(true);
@@ -210,18 +76,6 @@ export default function Dashboard() {
     if (!isAuthenticated) return;
     void loadPortfolios();
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    const isDark = theme === "dark";
-    initVantaBackground(isDark).catch(() => undefined);
-
-    return () => {
-      birdsEffectRef.current?.destroy();
-      birdsEffectRef.current = null;
-      cloudsEffectRef.current?.destroy();
-      cloudsEffectRef.current = null;
-    };
-  }, [theme, initVantaBackground]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -379,17 +233,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen pb-8 page-gradient-shell overflow-x-hidden">
-      <div className="page-bg-orb page-bg-orb--one" aria-hidden="true" />
-      <div className="page-bg-orb page-bg-orb--two" aria-hidden="true" />
-      <div className="page-bg-orb page-bg-orb--three" aria-hidden="true" />
-      <div className="page-bg-grid" aria-hidden="true" />
-      <div ref={cloudsRef} className="fixed inset-0 z-0 pointer-events-none" aria-hidden="true" />
-      <div
-        ref={birdsRef}
-        className={`fixed inset-0 z-0 pointer-events-none ${theme === "dark" ? "mix-blend-screen" : "mix-blend-multiply"}`}
-        style={{ background: "transparent" }}
-        aria-hidden="true"
-      />
+      <PageBirdsCloudsBackground showShellLayers />
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-5 pb-8 space-y-8">
         <section aria-label="Hero summary" className="section-enter">

@@ -15,6 +15,7 @@ export function createSimulationRoutes(engine: SimulationEngine) {
   router.post("/trade", controller.trade);
   router.post("/currency", controller.setCurrency);
   router.post("/portfolio/import", csvUploadMiddleware, controller.importPortfolio);
+  router.get("/assets/filters", controller.assetFilters);
   router.get("/assets", controller.assets);
   router.get("/state", controller.state);
 
