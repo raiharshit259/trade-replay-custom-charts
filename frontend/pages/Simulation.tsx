@@ -77,14 +77,11 @@ export default function Simulation() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col page-gradient-shell overflow-x-hidden">
+    <div className="min-h-screen flex flex-col page-gradient-shell overflow-visible">
       <PageBirdsCloudsBackground showShellLayers showBirds={false} />
       <TopBar totalCandles={totalCandles} currentDate={currentDate} />
 
-      <main
-        className="relative z-10"
-        style={{ marginTop: 'calc(var(--scenario-bar-height, 0px) + 16px)' }}
-      >
+      <main className="relative z-10">
 
       {isInitializingSimulation && (
         <div className="px-3 pt-3">
