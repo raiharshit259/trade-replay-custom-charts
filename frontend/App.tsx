@@ -6,7 +6,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import GlobalLoader from "@/components/GlobalLoader";
-import CursorGlow from "@/components/CursorGlow";
 import { AppProvider } from "@/context/AppContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -68,7 +67,6 @@ const App = () => (
         />
         <BrowserRouter>
           <div className="futuristic-shell">
-            <CursorGlow />
             <div className="ambient-layer ambient-layer--one" aria-hidden="true" />
             <div className="ambient-layer ambient-layer--two" aria-hidden="true" />
             <div className="ambient-layer ambient-layer--three" aria-hidden="true" />
