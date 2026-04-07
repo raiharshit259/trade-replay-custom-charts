@@ -1,0 +1,26 @@
+import mongoose, { InferSchemaType, Schema } from "mongoose";
+
+const symbolSchema = new Schema(
+  {
+    symbol: { type: String, required: true, trim: true, uppercase: true },
+    fullSymbol: { type: String, required: true, trim: true, uppercase: true },
+    name: { type: String, required: true, trim: true },
+    exchange: { type: String, required: true, trim: true, uppercase: true },
+    country: { type: String, required: true, trim: true, uppercase: true },
+    type: { type: String, required: true, enum: ["stock", "crypto", "forex", "index"] },
+    currency: { type: String, required: true, trim: true, uppercase: true },
+    popularity: { type: Number, required: true, default: 0 },
+    source: { type: String, required: true, trim: true },
+  },
+  { timestamps: true },
+);
+
+symbolSchema.index({ fullSymbol: 1 }, { unique: true });
+symbolSchema.index({ exchange: 1, type: 1, country: 1 });
+symbolSchema.index({ symbol: "text", name: "text", fullSymbol: "text" });
+
+export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
+
+export const SymbolModel = mongoose.models.Symbol || mongoose.model("Symbol", symbolSchema);

@@ -39,6 +39,10 @@ export default function SymbolSearchModal({
 
   const [rows, setRows] = useState<AssetSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
 
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [countryOptions, setCountryOptions] = useState<AssetSearchFilterOption[]>([]);
@@ -52,7 +56,8 @@ export default function SymbolSearchModal({
 
   const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
 
-  const resultCache = useRef(new Map<string, AssetSearchItem[]>());
+  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number }>());
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -108,33 +113,35 @@ export default function SymbolSearchModal({
     setSelectedFutureRoot(null);
   }, [category]);
 
+  const filterKey = useMemo(() => JSON.stringify({
+    q: query.trim(),
+    category,
+    country,
+    type,
+    sector,
+    source,
+    exchangeType,
+    futureCategory,
+    economyCategory,
+  }), [query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
+
   useEffect(() => {
     if (!open) return;
 
-    const timer = window.setTimeout(async () => {
-      const effectiveQuery = query.trim();
-      const cacheKey = JSON.stringify({
-        q: effectiveQuery,
-        category,
-        country,
-        type,
-        sector,
-        source,
-        exchangeType,
-        futureCategory,
-        economyCategory,
-      });
-
-      const cached = resultCache.current.get(cacheKey);
+    const loadFirstPage = async () => {
+      const cached = resultCache.current.get(filterKey);
       if (cached) {
-        setRows(cached);
+        setRows(cached.rows);
+        setHasMore(cached.hasMore);
+        setTotal(cached.total);
+        setPage(1);
         return;
       }
 
       setLoading(true);
       try {
         const response = await searchAssets({
-          q: effectiveQuery,
+          q: query.trim(),
           category: category === "all" ? undefined : category,
           country: country === "all" ? undefined : country,
           type: type === "all" ? undefined : type,
@@ -144,19 +151,91 @@ export default function SymbolSearchModal({
           futureCategory: futureCategory === "all" ? undefined : futureCategory,
           economyCategory: economyCategory === "all" ? undefined : economyCategory,
           page: 1,
-          limit: 80,
+          limit: 50,
         });
-        resultCache.current.set(cacheKey, response.assets);
+
         setRows(response.assets);
+        setHasMore(response.hasMore);
+        setTotal(response.total);
+        setPage(1);
+        resultCache.current.set(filterKey, {
+          rows: response.assets,
+          hasMore: response.hasMore,
+          total: response.total,
+        });
       } catch {
         setRows([]);
+        setHasMore(false);
+        setTotal(0);
       } finally {
         setLoading(false);
       }
-    }, 280);
+    };
+
+    const timer = window.setTimeout(async () => {
+      await loadFirstPage();
+    }, 300);
 
     return () => window.clearTimeout(timer);
-  }, [open, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
+  }, [open, filterKey, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory]);
+
+  useEffect(() => {
+    if (!open) return;
+    const container = listContainerRef.current;
+    if (!container) return;
+
+    const onScroll = () => {
+      if (loading || loadingMore || !hasMore) return;
+
+      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      if (distanceToBottom > 80) return;
+
+      setLoadingMore(true);
+      void (async () => {
+        try {
+          const nextPage = page + 1;
+          const response = await searchAssets({
+            q: query.trim(),
+            category: category === "all" ? undefined : category,
+            country: country === "all" ? undefined : country,
+            type: type === "all" ? undefined : type,
+            sector: sector === "all" ? undefined : sector,
+            source: source === "all" ? undefined : source,
+            exchangeType: exchangeType === "all" ? undefined : exchangeType,
+            futureCategory: futureCategory === "all" ? undefined : futureCategory,
+            economyCategory: economyCategory === "all" ? undefined : economyCategory,
+            page: nextPage,
+            limit: 50,
+          });
+
+          setRows((previous) => {
+            const mergedMap = new Map(previous.map((item) => [`${item.category}|${item.ticker}|${item.exchange}`, item]));
+            response.assets.forEach((item) => {
+              mergedMap.set(`${item.category}|${item.ticker}|${item.exchange}`, item);
+            });
+            const merged = Array.from(mergedMap.values());
+            resultCache.current.set(filterKey, {
+              rows: merged,
+              hasMore: response.hasMore,
+              total: response.total,
+            });
+            return merged;
+          });
+
+          setHasMore(response.hasMore);
+          setTotal(response.total);
+          setPage(nextPage);
+        } catch {
+          // Keep existing list on pagination failures.
+        } finally {
+          setLoadingMore(false);
+        }
+      })();
+    };
+
+    container.addEventListener("scroll", onScroll);
+    return () => container.removeEventListener("scroll", onScroll);
+  }, [open, loading, loadingMore, hasMore, page, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, filterKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -444,7 +523,7 @@ export default function SymbolSearchModal({
             </div>
           )}
 
-          <div className="mt-3 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
+          <div ref={listContainerRef} className="mt-3 max-h-[58vh] overflow-y-auto rounded-xl border border-border/70">
             {rows.map((item) => (
               <button
                 key={`${item.category}-${item.ticker}-${item.exchange}`}
@@ -487,6 +566,12 @@ export default function SymbolSearchModal({
               <p className="px-3 py-5 text-center text-sm text-muted-foreground">No symbols found</p>
             ) : null}
             {loading ? <p className="px-3 py-4 text-center text-xs text-muted-foreground">Loading symbols...</p> : null}
+            {!loading && rows.length > 0 ? (
+              <p className="px-3 py-2 text-center text-[11px] text-muted-foreground">
+                Showing {rows.length} of {total}
+              </p>
+            ) : null}
+            {loadingMore ? <p className="px-3 py-3 text-center text-xs text-muted-foreground">Loading more...</p> : null}
           </div>
         </div>
       </DialogContent>

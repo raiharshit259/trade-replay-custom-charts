@@ -3,7 +3,8 @@ import multer from "multer";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
 import { SimulationService } from "../services/simulationService";
-import { fetchAssetCatalogFilters, searchAssetCatalog } from "../services/assetCatalogService";
+import { fetchAssetCatalogFilters } from "../services/assetCatalogService";
+import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../services/symbol.service";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { mapServiceError } from "../utils/serviceError";
@@ -112,29 +113,55 @@ export function createSimulationController(service: SimulationService) {
     },
 
     assets: async (req: AuthenticatedRequest, res: Response) => {
-      const payload = await searchAssetCatalog({
-        q: typeof req.query.q === "string" ? req.query.q : "",
-        market: typeof req.query.market === "string" ? req.query.market : undefined,
-        category: typeof req.query.category === "string" ? req.query.category : undefined,
-        assetType: typeof req.query.assetType === "string" ? req.query.assetType : undefined,
+      const page = typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : 1;
+      const limit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 25;
+      const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+      const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 25;
+
+      const category = typeof req.query.category === "string"
+        ? req.query.category
+        : typeof req.query.market === "string"
+          ? req.query.market
+          : undefined;
+
+      const queryType = typeof req.query.type === "string"
+        ? req.query.type
+        : mapCategoryToSymbolType(category);
+
+      const payload = await searchSymbols({
+        query: typeof req.query.q === "string" ? req.query.q : "",
+        type: queryType,
         country: typeof req.query.country === "string" ? req.query.country : undefined,
-        type: typeof req.query.type === "string" ? req.query.type : undefined,
-        sector: typeof req.query.sector === "string" ? req.query.sector : undefined,
-        source: typeof req.query.source === "string" ? req.query.source : undefined,
-        exchangeType: typeof req.query.exchangeType === "string" ? req.query.exchangeType : undefined,
-        futureCategory: typeof req.query.futureCategory === "string" ? req.query.futureCategory : undefined,
-        economyCategory: typeof req.query.economyCategory === "string" ? req.query.economyCategory : undefined,
-        page: typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : undefined,
-        limit: typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : undefined,
+        limit: safeLimit,
+        offset: (safePage - 1) * safeLimit,
       });
 
-      res.json(payload);
+      res.json({
+        assets: payload.items.map((item) => toAssetSearchItem(item)),
+        total: payload.total,
+        page: safePage,
+        limit: safeLimit,
+        hasMore: payload.hasMore,
+      });
     },
 
     assetFilters: async (req: AuthenticatedRequest, res: Response) => {
+      const category = typeof req.query.category === "string" ? req.query.category : undefined;
+      const resolvedType = mapCategoryToSymbolType(category);
+      const registryFilters = await fetchSymbolFilters(resolvedType);
+
       const payload = await fetchAssetCatalogFilters({
         category: typeof req.query.category === "string" ? req.query.category : undefined,
       });
+
+      if (registryFilters.countries.length > 1) {
+        payload.countries = registryFilters.countries;
+      }
+
+      if (registryFilters.types.length > 1) {
+        payload.types = registryFilters.types;
+      }
+
       res.json(payload);
     },
   };

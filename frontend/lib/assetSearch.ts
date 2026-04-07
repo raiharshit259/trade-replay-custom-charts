@@ -69,6 +69,10 @@ export async function searchAssets(params: {
   page?: number;
   limit?: number;
 }): Promise<AssetSearchResponse> {
+  const limit = params.limit ?? 25;
+  const page = params.page ?? 1;
+  const offset = (Math.max(1, page) - 1) * limit;
+
   const response = await api.get<AssetSearchResponse>("/simulation/assets", {
     params: {
       q: params.q,
@@ -81,8 +85,9 @@ export async function searchAssets(params: {
       exchangeType: params.exchangeType,
       futureCategory: params.futureCategory,
       economyCategory: params.economyCategory,
-      page: params.page ?? 1,
-      limit: params.limit ?? 25,
+      page,
+      limit,
+      offset,
     },
   });
 
