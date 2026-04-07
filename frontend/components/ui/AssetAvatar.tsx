@@ -34,16 +34,27 @@ function buildImageCandidates(src?: string): string[] {
 
   const encoded = encodeURIComponent(clearbitDomain);
   return [
+    src,
     `https://www.google.com/s2/favicons?sz=128&domain=${encoded}`,
     `https://icons.duckduckgo.com/ip3/${clearbitDomain}.ico`,
   ];
 }
 
+function buildDeterministicFallbackIcon(label: string): string {
+  const safeLabel = (label || "ASSET").trim().toUpperCase();
+  const initials = getInitials(safeLabel);
+  const palette = ["#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#84cc16", "#f97316"];
+  const sum = safeLabel.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const bg = palette[sum % palette.length];
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'><rect width='128' height='128' rx='64' fill='${bg}'/><text x='64' y='72' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='40' font-weight='700' fill='#ffffff'>${initials}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export default function AssetAvatar({ src, label, className, imgClassName }: AssetAvatarProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const initials = useMemo(() => getInitials(label), [label]);
   const imageCandidates = useMemo(() => buildImageCandidates(src), [src]);
+  const fallbackIcon = useMemo(() => buildDeterministicFallbackIcon(label), [label]);
   const currentSrc = imageCandidates[candidateIndex];
 
   useEffect(() => {
@@ -51,21 +62,11 @@ export default function AssetAvatar({ src, label, className, imgClassName }: Ass
     setCandidateIndex(0);
   }, [src]);
 
-  if (!currentSrc || imageFailed) {
-    return (
-      <span
-        className={className ?? "inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary/80 text-[10px] font-semibold text-foreground"}
-        aria-label={label}
-        title={label}
-      >
-        {initials}
-      </span>
-    );
-  }
+  const displaySrc = !currentSrc || imageFailed ? fallbackIcon : currentSrc;
 
   return (
     <img
-      src={currentSrc}
+      src={displaySrc}
       alt={label}
       title={label}
       loading="lazy"
