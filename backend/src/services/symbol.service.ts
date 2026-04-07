@@ -221,7 +221,9 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
         ? "Forex"
         : "Indices";
 
+  const upperSymbol = symbol.symbol.toUpperCase();
   const stockIconUrl = symbol.companyDomain ? `https://logo.clearbit.com/${symbol.companyDomain}` : "";
+  const tickerIconUrl = upperSymbol ? `https://financialmodelingprep.com/image-stock/${upperSymbol}.png` : "";
 
   return {
     ticker: symbol.symbol,
@@ -240,8 +242,8 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     icon: "",
     exchangeIcon: "",
     exchangeLogoUrl: "",
-    iconUrl: symbol.iconUrl || stockIconUrl,
-    logoUrl: symbol.iconUrl || stockIconUrl,
+    iconUrl: symbol.iconUrl || stockIconUrl || (symbol.type === "stock" ? tickerIconUrl : ""),
+    logoUrl: symbol.iconUrl || stockIconUrl || (symbol.type === "stock" ? tickerIconUrl : ""),
     source: "symbol-registry",
   };
 }

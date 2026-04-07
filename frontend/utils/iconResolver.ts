@@ -7,11 +7,14 @@ function coinGeckoIconUrl(id: string): string {
 
 function resolveCryptoIcon(item: AssetSearchItem): string | undefined {
   const symbol = (item.symbol || item.ticker || "").toUpperCase();
-  const base = symbol.includes("USDT")
-    ? symbol.replace("USDT", "")
-    : symbol.includes("USD")
-      ? symbol.replace("USD", "")
-      : symbol;
+  const quoteSuffixes = ["USDT", "USDC", "USD", "BTC", "ETH", "BNB", "INR", "EUR", "GBP", "JPY"];
+  let base = symbol;
+  for (const suffix of quoteSuffixes) {
+    if (base.endsWith(suffix) && base.length > suffix.length) {
+      base = base.slice(0, -suffix.length);
+      break;
+    }
+  }
   const iconId = CRYPTO_ICON_ID_MAP[base] || CRYPTO_ICON_ID_MAP[symbol];
   if (!iconId) return undefined;
   return coinGeckoIconUrl(iconId);
