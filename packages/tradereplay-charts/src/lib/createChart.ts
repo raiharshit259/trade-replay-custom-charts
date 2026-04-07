@@ -1,5 +1,8 @@
 // ─── Public types ────────────────────────────────────────────────────────────
 
+import { TimeIndex } from './data/timeIndex';
+import { SeriesStore, type TimedRow } from './data/seriesStore';
+
 export type UTCTimestamp = number;
 
 export type InteractionMode = 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch';
@@ -149,7 +152,6 @@ export interface IChartApi {
 }
 
 // ─── Internal constants ───────────────────────────────────────────────────────
-
 const PRICE_AXIS_W = 68;
 const TIME_AXIS_H = 28;
 const DEFAULT_BAR_WIDTH = 8;
@@ -158,18 +160,6 @@ const MAX_BAR_WIDTH = 60;
 const PRICE_PADDING = 0.1;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function bsearch(arr: UTCTimestamp[], target: UTCTimestamp): number {
-  let lo = 0;
-  let hi = arr.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (arr[mid] === target) return mid;
-    if (arr[mid] < target) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return lo;
-}
 
 function niceStep(range: number, steps: number): number {
   const rough = range / steps;
@@ -201,7 +191,7 @@ function fmtTime(ts: UTCTimestamp, interval: number): string {
 interface SeriesState {
   type: SeriesType;
   opts: SeriesOptions;
-  data: unknown[];
+  store: SeriesStore<TimedRow>;
   scaleMargins: ScaleMargins;
   separateScale: boolean;
 }
@@ -228,9 +218,9 @@ export function createChart(
 
   // ── chart state ──
   let barWidth = DEFAULT_BAR_WIDTH;
-  /** Index into allTimes[] for the bar at the right edge of the chart area. */
+  /** Index into timeIndex for the bar at the right edge of the chart area. */
   let rightmostIndex = 0;
-  let allTimes: UTCTimestamp[] = [];
+  const timeIndex = new TimeIndex();
   let mode: InteractionMode = 'idle';
   let crosshairX: number | null = null;
   let crosshairY: number | null = null;
@@ -271,17 +261,40 @@ export function createChart(
   }
 
   // ── time management ──
-  function rebuildTimes(): void {
-    const wasEmpty = allTimes.length === 0;
-    const set = new Set<UTCTimestamp>();
+  /**
+   * Rebuild the canonical TimeIndex from all series' raw rows, re-align every
+   * store, then update `rightmostIndex`.
+   *
+   * Called once after all series have been `setData`-ed for the same symbol
+   * so the index is consistent.  O(S·N·log(S·N)).
+   */
+  function rebuildIndex(): void {
+    const oldLastTime =
+      timeIndex.length > 0 ? timeIndex.at(timeIndex.length - 1) : null;
+
+    timeIndex.rebuild(
+      seriesList.map((s) =>
+        (s.store.rawRows as Array<{ time: UTCTimestamp }>).map((r) => r.time),
+      ),
+    );
+
     for (const s of seriesList) {
-      for (const row of s.data) {
-        set.add((row as { time: UTCTimestamp }).time);
-      }
+      s.store.realign();
     }
-    allTimes = Array.from(set).sort((a, b) => a - b);
-    if (wasEmpty && allTimes.length > 0) {
-      rightmostIndex = allTimes.length - 1;
+
+    const newLen = timeIndex.length;
+    if (newLen === 0) {
+      rightmostIndex = 0;
+      return;
+    }
+
+    const newLastTime = timeIndex.at(newLen - 1)!;
+    if (oldLastTime === null || newLastTime !== oldLastTime) {
+      // First load or symbol switch: jump to the live edge.
+      rightmostIndex = newLen - 1;
+    } else {
+      // Clamp to valid range (handles shrinking data sets).
+      rightmostIndex = Math.max(0, Math.min(rightmostIndex, newLen - 1));
     }
   }
 
@@ -293,8 +306,9 @@ export function createChart(
   ): { min: number; max: number } | null {
     let min = Infinity;
     let max = -Infinity;
-    for (let i = Math.max(0, first); i <= Math.min(s.data.length - 1, last); i++) {
-      const row = s.data[i] as CandlestickData & LineData & HistogramData;
+    for (let i = Math.max(0, first); i <= Math.min(s.store.length - 1, last); i++) {
+      const row = s.store.getAt(i) as (CandlestickData & LineData & HistogramData) | null;
+      if (!row) continue;
       if (s.type === 'Candlestick' || s.type === 'Bar') {
         min = Math.min(min, row.low);
         max = Math.max(max, row.high);
@@ -320,7 +334,7 @@ export function createChart(
 
   function computeRenderState(): RenderState {
     const firstBar = Math.max(0, Math.floor(xToBar(0)));
-    const lastBar = Math.min(allTimes.length - 1, Math.ceil(rightmostIndex));
+    const lastBar = Math.min(timeIndex.length - 1, Math.ceil(rightmostIndex));
 
     let mainMin = Infinity;
     let mainMax = -Infinity;
@@ -423,8 +437,8 @@ export function createChart(
     ctx.textBaseline = 'middle';
 
     let interval = 86400;
-    if (allTimes.length >= 2) {
-      interval = Math.round((allTimes[allTimes.length - 1] - allTimes[0]) / (allTimes.length - 1));
+    if (timeIndex.length >= 2) {
+      interval = timeIndex.interval();
     }
 
     const minSpacing = 70;
@@ -432,7 +446,7 @@ export function createChart(
     for (let i = Math.ceil(rs.firstBar / bpl) * bpl; i <= rs.lastBar; i += bpl) {
       const x = barToX(i);
       if (x < 10 || x > w - 10) continue;
-      const t = allTimes[i];
+      const t = timeIndex.at(i);
       if (t == null) continue;
       ctx.fillText(fmtTime(t, interval), x, h + TIME_AXIS_H / 2);
     }
@@ -468,7 +482,7 @@ export function createChart(
     const w = cw();
 
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as CandlestickData;
+      const row = s.store.getAt(i) as CandlestickData | null;
       if (!row) continue;
       const x = barToX(i);
       if (x < -bw || x > w + bw) continue;
@@ -515,7 +529,7 @@ export function createChart(
     const { firstBar, lastBar, mainMin, mainMax } = rs;
 
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as CandlestickData;
+      const row = s.store.getAt(i) as CandlestickData | null;
       if (!row) continue;
       const x = barToX(i);
       if (x < -bw || x > w + bw) continue;
@@ -557,7 +571,7 @@ export function createChart(
     }
 
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as HistogramData;
+      const row = s.store.getAt(i) as HistogramData | null;
       if (!row) continue;
       const x = barToX(i);
       if (x < -bw || x > w + bw) continue;
@@ -586,7 +600,7 @@ export function createChart(
     ctx.beginPath();
     let started = false;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const y = mainPriceToY(row.value, mainMin, mainMax);
@@ -609,7 +623,7 @@ export function createChart(
     let firstX = 0;
     let lastX = 0;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const y = mainPriceToY(row.value, mainMin, mainMax);
@@ -635,7 +649,7 @@ export function createChart(
     ctx.beginPath();
     started = false;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const y = mainPriceToY(row.value, mainMin, mainMax);
@@ -661,7 +675,7 @@ export function createChart(
     let firstX = 0;
     let lastX = 0;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const rawY = mainPriceToY(row.value, mainMin, mainMax);
@@ -686,7 +700,7 @@ export function createChart(
     started = false;
     firstX = 0; lastX = 0;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const rawY = mainPriceToY(row.value, mainMin, mainMax);
@@ -713,7 +727,7 @@ export function createChart(
     ctx.beginPath();
     started = false;
     for (let i = firstBar; i <= lastBar; i++) {
-      const row = s.data[i] as LineData;
+      const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
       const x = barToX(i);
       const y = mainPriceToY(row.value, mainMin, mainMax);
@@ -723,7 +737,7 @@ export function createChart(
   }
 
   function drawSeries(s: SeriesState, rs: RenderState): void {
-    if (s.opts.visible === false || s.data.length === 0) return;
+    if (s.opts.visible === false || s.store.length === 0) return;
     switch (s.type) {
       case 'Candlestick': drawCandlestick(s, rs); break;
       case 'Bar':         drawBar(s, rs); break;
@@ -765,20 +779,18 @@ export function createChart(
 
     // Time label
     const barIdx = Math.round(xToBar(crosshairX));
-    if (barIdx >= 0 && barIdx < allTimes.length) {
-      let interval = 86400;
-      if (allTimes.length >= 2) {
-        interval = Math.round(
-          (allTimes[allTimes.length - 1] - allTimes[0]) / (allTimes.length - 1)
-        );
+    if (barIdx >= 0 && barIdx < timeIndex.length) {
+      const interval = timeIndex.interval();
+      const t = timeIndex.at(barIdx);
+      if (t != null) {
+        const tLabel = fmtTime(t, interval);
+        ctx.textAlign = 'center';
+        const tlW = Math.max(50, ctx.measureText(tLabel).width + 12);
+        ctx.fillStyle = crosshairVColor;
+        ctx.fillRect(crosshairX - tlW / 2, h + 2, tlW, labelH);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(tLabel, crosshairX, h + 2 + labelH / 2);
       }
-      const tLabel = fmtTime(allTimes[barIdx], interval);
-      ctx.textAlign = 'center';
-      const tlW = Math.max(50, ctx.measureText(tLabel).width + 12);
-      ctx.fillStyle = crosshairVColor;
-      ctx.fillRect(crosshairX - tlW / 2, h + 2, tlW, labelH);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(tLabel, crosshairX, h + 2 + labelH / 2);
     }
   }
 
@@ -861,25 +873,37 @@ export function createChart(
   function makeSeries<T extends SeriesType>(sState: SeriesState): ISeriesApi<T> {
     return {
       setData(data: RowOf<T>[]): void {
-        sState.data = data as unknown[];
-        rebuildTimes();
+        sState.store.setData(data as TimedRow[]);
+        rebuildIndex();
         scheduleRender();
       },
       update(row: RowOf<T>): void {
         const t = (row as { time: UTCTimestamp }).time;
-        const d = sState.data;
-        if (d.length > 0 && (d[d.length - 1] as { time: UTCTimestamp }).time === t) {
-          d[d.length - 1] = row;
-        } else {
-          d.push(row);
-          // Insert time into allTimes (fast path: append)
-          if (allTimes.length === 0 || allTimes[allTimes.length - 1] < t) {
-            allTimes.push(t);
+        const result = sState.store.update(row as TimedRow);
+
+        if (result === 'appended') {
+          // New timestamp: insert into the shared time index.
+          const newBarIdx = timeIndex.insertOne(t);
+          const newLen = timeIndex.length;
+
+          if (newBarIdx === newLen - 1) {
+            // Fast path: timestamp appended at the live edge.
+            sState.store.setAt(newBarIdx, row as TimedRow);
+            for (const other of seriesList) {
+              if (other !== sState) other.store.grow(newLen);
+            }
+            // Advance viewport to the live edge if the user hasn't scrolled away.
+            if (rightmostIndex >= newLen - 2) {
+              rightmostIndex = newLen - 1;
+            }
           } else {
-            const idx = bsearch(allTimes, t);
-            if (allTimes[idx] !== t) allTimes.splice(idx, 0, t);
+            // Slow path: out-of-order insert — realign all stores.
+            for (const s of seriesList) {
+              s.store.realign();
+            }
           }
         }
+
         scheduleRender();
       },
       applyOptions(opts: Partial<SeriesOptions>): void {
@@ -925,10 +949,10 @@ export function createChart(
 
   const timeScaleApi: ITimeScaleApi = {
     scrollPosition(): number {
-      return (allTimes.length - 1) - rightmostIndex;
+      return (timeIndex.length - 1) - rightmostIndex;
     },
     getVisibleLogicalRange(): LogicalRange | null {
-      if (!allTimes.length) return null;
+      if (!timeIndex.length) return null;
       return { from: xToBar(0), to: rightmostIndex };
     },
     setVisibleLogicalRange(range: LogicalRange): void {
@@ -939,33 +963,33 @@ export function createChart(
     },
     applyOptions(opts: { rightOffset?: number; [key: string]: unknown }): void {
       if (typeof opts.rightOffset === 'number') {
-        rightmostIndex = (allTimes.length - 1) - opts.rightOffset;
+        rightmostIndex = (timeIndex.length - 1) - opts.rightOffset;
         scheduleRender();
       }
     },
     scrollToPosition(pos: number, _animate: boolean): void {
-      rightmostIndex = (allTimes.length - 1) - pos;
+      rightmostIndex = (timeIndex.length - 1) - pos;
       scheduleRender();
     },
     scrollToRealTime(): void {
-      rightmostIndex = allTimes.length - 1;
+      rightmostIndex = timeIndex.length - 1;
       scheduleRender();
     },
     coordinateToTime(x: number): UTCTimestamp | null {
-      if (!allTimes.length) return null;
+      if (!timeIndex.length) return null;
       const idx = Math.round(xToBar(x));
-      if (idx < 0 || idx >= allTimes.length) return null;
-      return allTimes[idx];
+      if (idx < 0 || idx >= timeIndex.length) return null;
+      return timeIndex.at(idx) ?? null;
     },
     timeToCoordinate(time: UTCTimestamp): number | null {
-      if (!allTimes.length) return null;
-      const idx = bsearch(allTimes, time);
-      if (allTimes[idx] !== time) return null;
+      if (!timeIndex.length) return null;
+      const idx = timeIndex.indexOf(time);
+      if (idx < 0) return null;
       return barToX(idx);
     },
     setVisibleRange(range: TimeRange): void {
-      const fromIdx = bsearch(allTimes, range.from);
-      const toIdx = bsearch(allTimes, range.to);
+      const fromIdx = timeIndex.closestIndex(range.from);
+      const toIdx = timeIndex.closestIndex(range.to);
       const bars = toIdx - fromIdx + 1;
       if (bars > 0) barWidth = Math.max(MIN_BAR_WIDTH, Math.min(MAX_BAR_WIDTH, cw() / bars));
       rightmostIndex = toIdx;
@@ -994,7 +1018,7 @@ export function createChart(
       const sState: SeriesState = {
         type,
         opts: { visible: true, ...options },
-        data: [],
+        store: new SeriesStore<TimedRow>(timeIndex),
         scaleMargins: { top: 0, bottom: 0 },
         separateScale: options?.priceScaleId === '',
       };

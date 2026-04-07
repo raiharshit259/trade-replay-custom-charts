@@ -16,3 +16,6 @@ export {
   type ChartOptions,
   type IChartApi,
 } from './lib/createChart';
+
+export { TimeIndex } from './lib/data/timeIndex';
+export { SeriesStore, type TimedRow } from './lib/data/seriesStore';
