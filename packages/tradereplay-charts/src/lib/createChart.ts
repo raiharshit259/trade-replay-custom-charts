@@ -168,6 +168,8 @@ const MAX_BAR_WIDTH = 60;
 const PRICE_PADDING = 0.1;
 /** Id of the default (main) pane that always exists. */
 const MAIN_PANE_ID: PaneId = 'main';
+/** Minimum pane height weight to prevent zero-height panes. */
+const MIN_PANE_HEIGHT = 0.01;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -443,10 +445,12 @@ export function createChart(
     ctx.beginPath(); ctx.moveTo(w, 0); ctx.lineTo(w, height); ctx.stroke();
     // Bottom border (time axis top edge)
     ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(width, h); ctx.stroke();
-    // Pane dividers
+    // Pane dividers — drawn in the gap between adjacent panes.
     for (const pane of rs.paneStates) {
-      if (pane.top === 0) continue; // skip main pane (no divider above it)
-      const divY = pane.top - Math.floor(PANE_DIVIDER_H / 2);
+      if (pane.top === 0) continue; // no divider above the first pane
+      // The gap starts at (previous pane bottom) = pane.top - PANE_DIVIDER_H.
+      // Draw a line through the vertical centre of the gap.
+      const divY = pane.top - Math.round(PANE_DIVIDER_H / 2);
       ctx.beginPath(); ctx.moveTo(0, divY); ctx.lineTo(w + PRICE_AXIS_W, divY); ctx.stroke();
     }
   }
@@ -1100,8 +1104,16 @@ export function createChart(
     },
     addPane(opts?: { height?: number; id?: string }): string {
       const id: PaneId = opts?.id ?? `pane-${++nextPaneSeq}`;
-      if (!panes.some((p) => p.id === id)) {
-        panes.push({ id, height: Math.max(0.01, opts?.height ?? 1) });
+      const normalizedHeight = Math.max(MIN_PANE_HEIGHT, opts?.height ?? 1);
+      const existing = panes.find((p) => p.id === id);
+      if (existing) {
+        // If an explicit height was provided for an existing pane, update it.
+        if (opts?.height != null) {
+          existing.height = normalizedHeight;
+          scheduleRender();
+        }
+      } else {
+        panes.push({ id, height: normalizedHeight });
         scheduleRender();
       }
       return id;
@@ -1120,7 +1132,7 @@ export function createChart(
     setPaneHeights(heights: Record<string, number>): void {
       for (const pane of panes) {
         const h = heights[pane.id];
-        if (typeof h === 'number' && h > 0) pane.height = h;
+        if (typeof h === 'number' && h > 0) pane.height = Math.max(MIN_PANE_HEIGHT, h);
       }
       scheduleRender();
     },
