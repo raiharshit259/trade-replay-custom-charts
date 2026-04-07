@@ -16,6 +16,7 @@ export interface NormalizedSymbol {
 }
 
 const CRYPTO_ICON_ID_MAP: Record<string, string> = {
+  "1INCH": "1inch",
   BTC: "bitcoin",
   ETH: "ethereum",
   USDT: "tether",
@@ -299,7 +300,9 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
         country: "GLOBAL",
         type: "crypto",
         currency: row.quoteAsset,
-        iconUrl: coinIconsBySymbol.get(baseSymbol) || (mappedId ? coinGeckoIconUrl(mappedId) : undefined),
+        iconUrl: coinIconsBySymbol.get(baseSymbol)
+          || (mappedId ? coinGeckoIconUrl(mappedId) : undefined)
+          || `https://cryptoicons.org/api/icon/${baseSymbol.toLowerCase()}/200`,
         popularity: 9,
         source: "binance",
       });

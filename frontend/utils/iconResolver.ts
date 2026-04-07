@@ -16,8 +16,13 @@ function resolveCryptoIcon(item: AssetSearchItem): string | undefined {
     }
   }
   const iconId = CRYPTO_ICON_ID_MAP[base] || CRYPTO_ICON_ID_MAP[symbol];
-  if (!iconId) return undefined;
-  return coinGeckoIconUrl(iconId);
+  if (iconId) {
+    return coinGeckoIconUrl(iconId);
+  }
+  if (base) {
+    return `https://cryptoicons.org/api/icon/${base.toLowerCase()}/200`;
+  }
+  return undefined;
 }
 
 function resolveStockIcon(item: AssetSearchItem): string | undefined {
