@@ -31,7 +31,7 @@ const ICON_REGISTRY = {
 const ROOT = path.resolve(process.cwd(), "public", "icons");
 
 function svgForSymbol(symbol, bg) {
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'><rect width='128' height='128' rx='24' fill='${bg}'/><text x='64' y='72' text-anchor='middle' font-family='Inter, Arial, sans-serif' font-size='34' font-weight='700' fill='#ffffff'>${symbol.slice(0, 3)}</text></svg>`;
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128' viewBox='0 0 128 128'><rect width='128' height='128' rx='24' fill='${bg}'/><circle cx='64' cy='64' r='28' fill='rgba(255,255,255,0.25)'/><circle cx='64' cy='64' r='16' fill='rgba(255,255,255,0.5)'/><title>${symbol}</title></svg>`;
 }
 
 async function ensureDirectories() {
