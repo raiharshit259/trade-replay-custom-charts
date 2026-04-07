@@ -22,6 +22,8 @@ export interface SymbolRegistryItem {
   country: string;
   type: SymbolType;
   currency: string;
+  iconUrl?: string;
+  companyDomain?: string;
   popularity: number;
 }
 
@@ -126,6 +128,8 @@ export async function searchSymbols(params: {
         country: 1,
         type: 1,
         currency: 1,
+        iconUrl: 1,
+        companyDomain: 1,
         popularity: 1,
       })
       .limit(Math.max(limit * 4, 100))
@@ -217,6 +221,8 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
         ? "Forex"
         : "Indices";
 
+  const stockIconUrl = symbol.companyDomain ? `https://logo.clearbit.com/${symbol.companyDomain}` : "";
+
   return {
     ticker: symbol.symbol,
     symbol: symbol.symbol,
@@ -234,8 +240,8 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
     icon: "",
     exchangeIcon: "",
     exchangeLogoUrl: "",
-    iconUrl: "",
-    logoUrl: "",
+    iconUrl: symbol.iconUrl || stockIconUrl,
+    logoUrl: symbol.iconUrl || stockIconUrl,
     source: "symbol-registry",
   };
 }

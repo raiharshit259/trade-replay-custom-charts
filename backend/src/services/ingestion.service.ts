@@ -9,8 +9,64 @@ export interface NormalizedSymbol {
   country: string;
   type: "stock" | "crypto" | "forex" | "index";
   currency: string;
+  iconUrl?: string;
+  companyDomain?: string;
   popularity: number;
   source: string;
+}
+
+const CRYPTO_ICON_ID_MAP: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  USDT: "tether",
+  BNB: "binancecoin",
+  SOL: "solana",
+  XRP: "ripple",
+  USDC: "usd-coin",
+  ADA: "cardano",
+  DOGE: "dogecoin",
+  TON: "the-open-network",
+  TRX: "tron",
+  DOT: "polkadot",
+  MATIC: "matic-network",
+  SHIB: "shiba-inu",
+  LTC: "litecoin",
+};
+
+const STOCK_DOMAIN_MAP: Record<string, string> = {
+  AAPL: "apple.com",
+  MSFT: "microsoft.com",
+  GOOGL: "abc.xyz",
+  GOOG: "abc.xyz",
+  AMZN: "amazon.com",
+  NVDA: "nvidia.com",
+  META: "meta.com",
+  TSLA: "tesla.com",
+  JPM: "jpmorganchase.com",
+  WMT: "walmart.com",
+  BAC: "bankofamerica.com",
+  V: "visa.com",
+  MA: "mastercard.com",
+  RELIANCE: "ril.com",
+  TCS: "tcs.com",
+  INFY: "infosys.com",
+  HDFCBANK: "hdfcbank.com",
+  ICICIBANK: "icicibank.com",
+  ITC: "itcportal.com",
+  LT: "larsentoubro.com",
+  SBIN: "sbi.co.in",
+  DMART: "avenuesupermarts.com",
+  TITAN: "titancompany.in",
+  ADANIENT: "adani.com",
+  ADANIPORTS: "adaniports.com",
+};
+
+function coinGeckoIconUrl(id: string): string {
+  return `https://assets.coingecko.com/coins/images/${id}/small.png`;
+}
+
+function stockDomainFor(symbol: string): string | undefined {
+  return STOCK_DOMAIN_MAP[symbol.trim().toUpperCase()];
 }
 
 function normalizeSymbol(input: NormalizedSymbol): NormalizedSymbol {
@@ -22,6 +78,8 @@ function normalizeSymbol(input: NormalizedSymbol): NormalizedSymbol {
     exchange: input.exchange.trim().toUpperCase(),
     country: input.country.trim().toUpperCase(),
     currency: input.currency.trim().toUpperCase(),
+    iconUrl: input.iconUrl?.trim(),
+    companyDomain: input.companyDomain?.trim().toLowerCase(),
   };
 }
 
@@ -92,6 +150,7 @@ async function ingestUsStocks(): Promise<NormalizedSymbol[]> {
           country: "US",
           type: "stock",
           currency: "USD",
+          companyDomain: stockDomainFor(symbol),
           popularity: 7,
           source: "nasdaq-trader",
         });
@@ -134,6 +193,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
           country: "IN",
           type: "stock",
           currency: "INR",
+          companyDomain: stockDomainFor(symbol),
           popularity: 8,
           source: "nse-equity-list",
         });
@@ -148,6 +208,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
         country: "IN",
         type: "stock",
         currency: "INR",
+        companyDomain: stockDomainFor(symbol),
         popularity: 6,
         source: "bse-curated",
       }));
@@ -184,25 +245,37 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
 
 async function ingestCrypto(): Promise<NormalizedSymbol[]> {
   const records: NormalizedSymbol[] = [];
+  const coinIconsBySymbol = new Map<string, string>();
 
   try {
-    const coinGecko = await fetchJson<Array<{ symbol: string; name: string; market_cap_rank?: number }>>(
+    const coinGecko = await fetchJson<Array<{ id: string; symbol: string; name: string; image?: string; market_cap_rank?: number }>>(
       "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1&sparkline=false",
     );
 
+    coinGecko.forEach((coin) => {
+      if (coin.symbol && coin.image) {
+        coinIconsBySymbol.set(coin.symbol.toUpperCase(), coin.image);
+      }
+    });
+
     records.push(...coinGecko
       .filter((coin) => coin.symbol)
-      .map((coin) => normalizeSymbol({
-        symbol: coin.symbol.toUpperCase(),
-        fullSymbol: `CRYPTO:${coin.symbol.toUpperCase()}`,
+      .map((coin) => {
+        const upperSymbol = coin.symbol.toUpperCase();
+        const fallbackId = CRYPTO_ICON_ID_MAP[upperSymbol];
+        return normalizeSymbol({
+        symbol: upperSymbol,
+        fullSymbol: `CRYPTO:${upperSymbol}`,
         name: coin.name,
         exchange: "GLOBAL",
         country: "GLOBAL",
         type: "crypto",
         currency: "USD",
+        iconUrl: coin.image || (fallbackId ? coinGeckoIconUrl(fallbackId) : undefined),
         popularity: Math.max(1, 300 - (coin.market_cap_rank ?? 250)),
         source: "coingecko",
-      })));
+      });
+      }));
   } catch (error) {
     logger.warn("symbol_ingest_coingecko_fallback", { message: error instanceof Error ? error.message : String(error) });
   }
@@ -215,7 +288,10 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
     records.push(...(binance.symbols ?? [])
       .filter((row) => row.status === "TRADING" && ["USDT", "USD", "BTC", "ETH"].includes(row.quoteAsset))
       .slice(0, 700)
-      .map((row) => normalizeSymbol({
+      .map((row) => {
+        const baseSymbol = row.baseAsset.toUpperCase();
+        const mappedId = CRYPTO_ICON_ID_MAP[baseSymbol];
+        return normalizeSymbol({
         symbol: row.symbol,
         fullSymbol: `BINANCE:${row.symbol}`,
         name: `${row.baseAsset}/${row.quoteAsset}`,
@@ -223,9 +299,11 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
         country: "GLOBAL",
         type: "crypto",
         currency: row.quoteAsset,
+        iconUrl: coinIconsBySymbol.get(baseSymbol) || (mappedId ? coinGeckoIconUrl(mappedId) : undefined),
         popularity: 9,
         source: "binance",
-      })));
+      });
+      }));
   } catch (error) {
     logger.warn("symbol_ingest_binance_fallback", { message: error instanceof Error ? error.message : String(error) });
   }
@@ -239,6 +317,7 @@ async function ingestCrypto(): Promise<NormalizedSymbol[]> {
       country: "GLOBAL",
       type: "crypto",
       currency: "USD",
+      iconUrl: coinGeckoIconUrl(CRYPTO_ICON_ID_MAP[symbol.replace("USD", "")] ?? "bitcoin"),
       popularity: 10,
       source: "fallback",
     }));
@@ -332,6 +411,8 @@ export async function ingestGlobalSymbols(): Promise<{ upserted: number; totalSo
           country: item.country,
           type: item.type,
           currency: item.currency,
+          iconUrl: item.iconUrl ?? "",
+          companyDomain: item.companyDomain ?? "",
           popularity: item.popularity,
           source: item.source,
         },

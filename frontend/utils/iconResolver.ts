@@ -1,53 +1,57 @@
 import type { AssetSearchItem } from "@/lib/assetSearch";
+import { CRYPTO_ICON_ID_MAP, EXCHANGE_ICON_MAP, STOCK_DOMAIN_MAP } from "@/config/iconMap";
 
-const EXCHANGE_DOMAINS: Record<string, string> = {
-  NASDAQ: "nasdaq.com",
-  NYSE: "nyse.com",
-  NYSEARCA: "nyse.com",
-  NSE: "nseindia.com",
-  BSE: "bseindia.com",
-  FOREX: "oanda.com",
-  FX: "oanda.com",
-  BINANCE: "binance.com",
-  CRYPTO: "coingecko.com",
-  GLOBAL: "coingecko.com",
-  SP: "spglobal.com",
-  DJ: "dowjones.com",
-  LSE: "londonstockexchange.com",
-  XETRA: "deutsche-boerse.com",
-  EURONEXT: "euronext.com",
-  TSE: "jpx.co.jp",
-  HKEX: "hkex.com.hk",
-};
-
-function toSeed(input: string): string {
-  return encodeURIComponent(input.trim().toUpperCase());
+function coinGeckoIconUrl(id: string): string {
+  return `https://assets.coingecko.com/coins/images/${id}/small.png`;
 }
 
-function generatedSymbolIcon(symbol: string): string {
-  return `https://api.dicebear.com/9.x/identicon/svg?seed=${toSeed(symbol)}`;
+function resolveCryptoIcon(item: AssetSearchItem): string | undefined {
+  const symbol = (item.symbol || item.ticker || "").toUpperCase();
+  const base = symbol.includes("USDT")
+    ? symbol.replace("USDT", "")
+    : symbol.includes("USD")
+      ? symbol.replace("USD", "")
+      : symbol;
+  const iconId = CRYPTO_ICON_ID_MAP[base] || CRYPTO_ICON_ID_MAP[symbol];
+  if (!iconId) return undefined;
+  return coinGeckoIconUrl(iconId);
 }
 
-function generatedExchangeIcon(exchange: string): string {
-  return `https://api.dicebear.com/9.x/shapes/svg?seed=${toSeed(exchange)}`;
+function resolveStockIcon(item: AssetSearchItem): string | undefined {
+  const symbol = (item.symbol || item.ticker || "").toUpperCase();
+  const domain = STOCK_DOMAIN_MAP[symbol];
+  if (domain) {
+    return `https://logo.clearbit.com/${domain}`;
+  }
+
+  if (symbol) {
+    return `https://financialmodelingprep.com/image-stock/${symbol}.png`;
+  }
+
+  return undefined;
 }
 
 export function resolveAssetIcons(item: AssetSearchItem): Pick<AssetSearchItem, "iconUrl" | "logoUrl" | "exchangeLogoUrl" | "exchangeIcon"> {
   const exchange = (item.exchange || "").toUpperCase();
-  const domain = EXCHANGE_DOMAINS[exchange];
-
-  const exchangeLogoUrl = item.exchangeLogoUrl
+  const exchangeIcon = item.exchangeLogoUrl
     || item.exchangeIcon
-    || (domain ? `https://logo.clearbit.com/${domain}` : generatedExchangeIcon(exchange || "EXCHANGE"));
+    || EXCHANGE_ICON_MAP[exchange]
+    || "";
+
+  const type = (item.type || item.instrumentType || "").toLowerCase();
+  const isCrypto = type === "crypto" || item.category === "crypto";
+  const isStockLike = item.category === "stocks" || item.category === "funds" || item.category === "bonds";
 
   const iconUrl = item.iconUrl
     || item.logoUrl
-    || (domain ? `https://logo.clearbit.com/${domain}` : generatedSymbolIcon(item.symbol || item.ticker || item.name));
+    || (isCrypto ? resolveCryptoIcon(item) : undefined)
+    || (isStockLike ? resolveStockIcon(item) : undefined)
+    || exchangeIcon;
 
   return {
     iconUrl,
     logoUrl: iconUrl,
-    exchangeLogoUrl,
-    exchangeIcon: exchangeLogoUrl,
+    exchangeLogoUrl: exchangeIcon,
+    exchangeIcon,
   };
 }

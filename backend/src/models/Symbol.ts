@@ -9,6 +9,8 @@ const symbolSchema = new Schema(
     country: { type: String, required: true, trim: true, uppercase: true },
     type: { type: String, required: true, enum: ["stock", "crypto", "forex", "index"] },
     currency: { type: String, required: true, trim: true, uppercase: true },
+    iconUrl: { type: String, trim: true, default: "" },
+    companyDomain: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
     source: { type: String, required: true, trim: true },
   },
