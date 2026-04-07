@@ -19,3 +19,5 @@ export {
 
 export { TimeIndex } from './lib/data/timeIndex';
 export { SeriesStore, type TimedRow } from './lib/data/seriesStore';
+export { type PaneId, type PaneDef, type PaneRect, PANE_DIVIDER_H, computePaneLayout } from './lib/layout/panes';
+export { priceToY, yToPrice, sepPriceToY, sepYToPrice } from './lib/scales/priceScale';
