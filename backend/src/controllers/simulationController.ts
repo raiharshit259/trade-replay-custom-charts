@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AuthenticatedRequest } from "../types/auth";
 import { SimulationService } from "../services/simulationService";
 import { fetchAssetCatalogFilters } from "../services/assetCatalogService";
-import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../services/symbol.service";
+import { mapCategoryToSymbolType, searchSymbols, toAssetSearchItem } from "../services/symbol.service";
 import { AppError } from "../utils/appError";
 import { requireUserId } from "../utils/request";
 import { mapServiceError } from "../utils/serviceError";
@@ -146,21 +146,9 @@ export function createSimulationController(service: SimulationService) {
     },
 
     assetFilters: async (req: AuthenticatedRequest, res: Response) => {
-      const category = typeof req.query.category === "string" ? req.query.category : undefined;
-      const resolvedType = mapCategoryToSymbolType(category);
-      const registryFilters = await fetchSymbolFilters(resolvedType);
-
       const payload = await fetchAssetCatalogFilters({
         category: typeof req.query.category === "string" ? req.query.category : undefined,
       });
-
-      if (registryFilters.countries.length > 1) {
-        payload.countries = registryFilters.countries;
-      }
-
-      if (registryFilters.types.length > 1) {
-        payload.types = registryFilters.types;
-      }
 
       res.json(payload);
     },

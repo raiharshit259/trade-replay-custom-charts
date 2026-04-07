@@ -1,4 +1,6 @@
 import { api } from "@/lib/api";
+import { getStaticFilters } from "@/config/filters";
+import { mapSymbolItemToUi } from "@/utils/symbolMapper";
 
 export type AssetMarketType = "Stocks" | "Funds" | "Futures" | "Forex" | "Crypto" | "Indices" | "Bonds" | "Economy" | "Options";
 export type AssetCategory = "stocks" | "funds" | "futures" | "forex" | "crypto" | "indices" | "bonds" | "economy" | "options";
@@ -72,6 +74,7 @@ export async function searchAssets(params: {
   const limit = params.limit ?? 25;
   const page = params.page ?? 1;
   const offset = (Math.max(1, page) - 1) * limit;
+  const requestedCategory = params.category ?? params.market;
 
   const response = await api.get<AssetSearchResponse>("/simulation/assets", {
     params: {
@@ -91,14 +94,21 @@ export async function searchAssets(params: {
     },
   });
 
-  return response.data;
+  const mappedAssets = response.data.assets
+    .map((item) => mapSymbolItemToUi(item, requestedCategory))
+    .filter((item) => {
+      if (params.type && params.type !== "all" && item.type !== params.type) return false;
+      if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
+      return true;
+    });
+
+  return {
+    ...response.data,
+    assets: mappedAssets,
+  };
 }
 
 export async function fetchAssetSearchFilters(params?: { category?: string }): Promise<AssetSearchFiltersResponse> {
-  const response = await api.get<AssetSearchFiltersResponse>("/simulation/assets/filters", {
-    params: {
-      category: params?.category,
-    },
-  });
-  return response.data;
+  const category = (params?.category as AssetCategory | "all" | undefined) ?? "all";
+  return getStaticFilters(category);
 }
