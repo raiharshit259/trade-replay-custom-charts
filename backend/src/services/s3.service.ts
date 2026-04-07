@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "../config/env";
 
@@ -117,4 +117,45 @@ export async function downloadPortfolioCsv(userId: string, key: string): Promise
   }
 
   throw new Error("S3_OBJECT_UNREADABLE");
+}
+
+export async function uploadCsvToS3(key: string, csvContent: string): Promise<void> {
+  ensureAwsConfigured();
+
+  const payload = csvContent.trim();
+  if (!payload) {
+    throw new Error("CSV_CONTENT_EMPTY");
+  }
+
+  await getS3Client().send(new PutObjectCommand({
+    Bucket: env.AWS_S3_BUCKET,
+    Key: key,
+    ContentType: "text/csv",
+    Body: payload,
+  }));
+}
+
+export async function listS3KeysByPrefix(prefix: string): Promise<string[]> {
+  ensureAwsConfigured();
+
+  const collected: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await getS3Client().send(new ListObjectsV2Command({
+      Bucket: env.AWS_S3_BUCKET,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+    }));
+
+    for (const item of response.Contents ?? []) {
+      if (item.Key) {
+        collected.push(item.Key);
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return collected;
 }
