@@ -56,7 +56,7 @@ export class SeriesStore<T extends TimedRow> {
    * out-of-bounds.  O(1).
    */
   getAt(i: number): T | null {
-    return i >= 0 && i < this._aligned.length ? (this._aligned[i] ?? null) : null;
+    return i >= 0 && i < this._aligned.length ? this._aligned[i] : null;
   }
 
   /**

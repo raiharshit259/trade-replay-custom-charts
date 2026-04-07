@@ -186,7 +186,9 @@ function fmtTime(ts: UTCTimestamp, interval: number): string {
   return `${hh}:${mm}`;
 }
 
-// ─── Internal series state ────────────────────────────────────────────────────
+/** Bars within this distance of the live edge are treated as "at live edge"
+ * for the purpose of auto-advancing rightmostIndex on new streaming bars. */
+const LIVE_EDGE_THRESHOLD = 2;
 
 interface SeriesState {
   type: SeriesType;
@@ -314,7 +316,8 @@ export function createChart(
         max = Math.max(max, row.high);
       } else {
         const v = row.value;
-        min = Math.min(min, v, s.type === 'Baseline' || s.type === 'Histogram' ? 0 : v);
+        min = Math.min(min, v);
+        if (s.type === 'Baseline' || s.type === 'Histogram') min = Math.min(min, 0);
         max = Math.max(max, v);
       }
     }
@@ -893,7 +896,7 @@ export function createChart(
               if (other !== sState) other.store.grow(newLen);
             }
             // Advance viewport to the live edge if the user hasn't scrolled away.
-            if (rightmostIndex >= newLen - 2) {
+            if (rightmostIndex >= newLen - LIVE_EDGE_THRESHOLD) {
               rightmostIndex = newLen - 1;
             }
           } else {
