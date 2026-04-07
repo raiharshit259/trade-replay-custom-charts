@@ -19,6 +19,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@tradereplay/charts": [
+        "../packages/tradereplay-charts/src/index.ts"
       ]
     },
     "skipLibCheck": true,

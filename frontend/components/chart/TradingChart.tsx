@@ -105,37 +105,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     touchRafRef.current = window.requestAnimationFrame(() => {
       touchRafRef.current = null;
       if (!chartRef.current) return;
-      switch (mode) {
-        case 'pan':
-          chartRef.current.applyOptions({
-            handleScroll: { horzTouchDrag: true, vertTouchDrag: false },
-            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
-          });
-          break;
-        case 'axis-zoom':
-          chartRef.current.applyOptions({
-            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
-            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
-          });
-          break;
-        case 'scroll':
-          chartRef.current.applyOptions({
-            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
-            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
-          });
-          break;
-        case 'pinch':
-          chartRef.current.applyOptions({
-            handleScroll: { horzTouchDrag: false, vertTouchDrag: false },
-            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
-          });
-          break;
-        default:
-          chartRef.current.applyOptions({
-            handleScroll: { horzTouchDrag: true, vertTouchDrag: false },
-            handleScale: { pinch: true, axisPressedMouseMove: { time: true, price: true } },
-          });
-      }
+      chartRef.current.setInteractionMode(mode);
     });
   }, [chartRef]);
 
