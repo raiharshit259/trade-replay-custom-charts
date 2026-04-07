@@ -283,12 +283,20 @@ export async function runPortfolioDatasetPipeline(): Promise<{
     }
   }
 
-  const keys = await listS3KeysByPrefix(`${BASE_PREFIX}/`);
+  let s3PrefixCount = -1;
+  try {
+    const keys = await listS3KeysByPrefix(`${BASE_PREFIX}/`);
+    s3PrefixCount = keys.length;
+  } catch (error) {
+    logger.warn("portfolio_pipeline_s3_list_skipped", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     uploaded,
     failed,
-    s3PrefixCount: keys.length,
+    s3PrefixCount,
   };
 }
 
