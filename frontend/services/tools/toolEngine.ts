@@ -1,4 +1,4 @@
-import type { Time, UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from '@tradereplay/charts';
 import { buildToolOptions, getToolDefinition, type DrawPoint, type Drawing, type ToolVariant } from './toolRegistry';
 import type { ToolOptions } from './toolOptions';
 
@@ -6,15 +6,16 @@ export function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function toTimestampFromTime(value: Time | null): UTCTimestamp | null {
+export function toTimestampFromTime(value: unknown): UTCTimestamp | null {
   if (value == null) return null;
-  if (typeof value === 'number') return value as UTCTimestamp;
+  if (typeof value === 'number') return value;
   if (typeof value === 'string') {
     const parsed = Math.floor(new Date(value).getTime() / 1000);
-    return Number.isFinite(parsed) ? (parsed as UTCTimestamp) : null;
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  if (typeof value === 'object' && 'year' in value && 'month' in value && 'day' in value) {
-    return Math.floor(Date.UTC(value.year, value.month - 1, value.day) / 1000) as UTCTimestamp;
+  if (typeof value === 'object' && value !== null && 'year' in value && 'month' in value && 'day' in value) {
+    const v = value as { year: number; month: number; day: number };
+    return Math.floor(Date.UTC(v.year, v.month - 1, v.day) / 1000);
   }
   return null;
 }
