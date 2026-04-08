@@ -1266,7 +1266,7 @@ export function createChart(
     },
     addIndicator(indicatorId: string, params?: Record<string, number>): string {
       const def = getIndicator(indicatorId);
-      if (!def) throw new Error(`Unknown indicator: "${indicatorId}". Did you call registerIndicator()?`);
+      if (!def) throw new Error(`Unknown indicator id "${indicatorId}". Check the id or call listIndicators() to see registered indicators.`);
 
       const instanceId: IndicatorInstanceId = `ind-${++nextIndicatorSeq}`;
 

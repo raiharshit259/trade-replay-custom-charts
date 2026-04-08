@@ -12,6 +12,11 @@ import type { IndicatorDefinition, IndicatorComputeContext, IndicatorResult } fr
  * @param values  Input series (may contain nulls for missing bars).
  * @param period  Look-back period (≥ 1).
  * @param k       Optional smoothing factor override (Wilder uses 1/period).
+ *
+ * **Gap handling**: when a null is encountered after the seed, the last valid
+ * EMA value is carried forward.  This keeps subsequent bars connected to the
+ * indicator rather than producing a null gap.  Consumers that prefer true
+ * nulls during gaps should post-process the output.
  */
 export function computeEmaValues(
   values: readonly (number | null)[],

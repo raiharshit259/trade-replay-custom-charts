@@ -147,10 +147,10 @@ test('EMA not all null when enough data', () => {
 test('EMA with Wilder k=1/period (used by RSI)', () => {
   // Wilder's EMA: k = 1/period
   const result = computeEmaValues([1, 2, 3, 4, 5], 3, 1 / 3);
-  // seed: (1+2+3)/3 = 2
-  // i=3: 4*(1/3) + 2*(2/3) = 4/3 + 4/3 = 8/3 ≈ 2.667
+  // seed at index 2: (1+2+3)/3 = 2
+  // index 3: 4*(1/3) + 2*(2/3) = 4/3 + 4/3 = 8/3 ≈ 2.667
   assert.ok(approx(result[2]!, 2));
-  assert.ok(approx(result[3]!, 8 / 3, 1e-10));
+  assert.ok(approx(result[3]!, 8 / 3, 1e-10)); // 8/3 = Wilder smooth of 2 → 4 over period 3
 });
 
 // ─── RSI ──────────────────────────────────────────────────────────────────────
