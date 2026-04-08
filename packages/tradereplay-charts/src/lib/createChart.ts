@@ -4,6 +4,12 @@ import { TimeIndex } from './data/timeIndex';
 import { SeriesStore, type TimedRow } from './data/seriesStore';
 import { type PaneId, type PaneDef, PANE_DIVIDER_H, computePaneLayout } from './layout/panes';
 import { priceToY, yToPrice, sepPriceToY, sepYToPrice } from './scales/priceScale';
+import { getIndicator } from '../indicators/registry';
+import { registerBuiltins } from '../indicators/builtins/index';
+import type { IndicatorDefinition, IndicatorInstanceId } from '../indicators/types';
+
+// Auto-register built-in indicators so they are available from the first createChart call.
+registerBuiltins();
 
 export type UTCTimestamp = number;
 
@@ -157,6 +163,19 @@ export interface IChartApi {
   removePane(id: string): void;
   /** Update relative height weights for panes. Keys are pane ids. */
   setPaneHeights(heights: Record<string, number>): void;
+  /**
+   * Attach a built-in or custom indicator to the chart.
+   *
+   * The indicator's output series are created automatically and assigned to
+   * the main price pane (overlay outputs) or a new subpane (subpane outputs).
+   *
+   * @param indicatorId  Registry id (e.g. 'sma', 'ema', 'rsi', 'macd').
+   * @param params       Parameter overrides (e.g. { period: 14 }).
+   * @returns            An opaque instance id for use with `removeIndicator`.
+   */
+  addIndicator(indicatorId: string, params?: Record<string, number>): string;
+  /** Remove a previously added indicator instance and its output series/pane. */
+  removeIndicator(instanceId: string): void;
 }
 
 // ─── Internal constants ───────────────────────────────────────────────────────
@@ -212,6 +231,27 @@ interface SeriesState {
   paneId: PaneId;
   scaleMargins: ScaleMargins;
   separateScale: boolean;
+  /**
+   * If set, this series was created as indicator output.
+   * It is excluded from TimeIndex rebuilds (its timestamps are always a
+   * subset of the source series' timestamps).
+   */
+  indicatorInstanceId?: IndicatorInstanceId;
+}
+
+/** Internal state for a live indicator instance. */
+interface IndicatorInstance {
+  instanceId: IndicatorInstanceId;
+  definition: IndicatorDefinition;
+  /** Resolved params merged with defaults from the definition. */
+  params: Record<string, number>;
+  /**
+   * Id of the pane owned by this indicator (subpane output only).
+   * `undefined` for overlay-only indicators (no dedicated pane).
+   */
+  ownedPaneId?: PaneId;
+  /** Series ids for each output, parallel to `definition.outputs`. */
+  outputSeriesIds: string[];
 }
 
 /** Per-render geometry and price range for a single pane. */
@@ -256,8 +296,10 @@ export function createChart(
   const panes: PaneDef[] = [{ id: MAIN_PANE_ID, height: 1 }];
   let nextPaneSeq = 0;
   let nextSeriesSeq = 0;
+  let nextIndicatorSeq = 0;
 
   const seriesList: SeriesState[] = [];
+  const indicatorInstances = new Map<IndicatorInstanceId, IndicatorInstance>();
   let rafId: number | null = null;
 
   // ── canvas setup ──
@@ -294,8 +336,10 @@ export function createChart(
 
   // ── time management ──
   /**
-   * Rebuild the canonical TimeIndex from all series' raw rows, re-align every
-   * store, then update `rightmostIndex`.
+   * Rebuild the canonical TimeIndex from all **source** series' raw rows
+   * (indicator output series are excluded — their timestamps are always a
+   * subset of the source timestamps), re-align every store, then update
+   * `rightmostIndex`.
    *
    * Called once after all series have been `setData`-ed for the same symbol
    * so the index is consistent.  O(S·N·log(S·N)).
@@ -304,10 +348,13 @@ export function createChart(
     const oldLastTime =
       timeIndex.length > 0 ? timeIndex.at(timeIndex.length - 1) : null;
 
+    // Only source series (non-indicator) contribute timestamps.
     timeIndex.rebuild(
-      seriesList.map((s) =>
-        (s.store.rawRows as Array<{ time: UTCTimestamp }>).map((r) => r.time),
-      ),
+      seriesList
+        .filter((s) => !s.indicatorInstanceId)
+        .map((s) =>
+          (s.store.rawRows as Array<{ time: UTCTimestamp }>).map((r) => r.time),
+        ),
     );
 
     for (const s of seriesList) {
@@ -317,6 +364,8 @@ export function createChart(
     const newLen = timeIndex.length;
     if (newLen === 0) {
       rightmostIndex = 0;
+      // Clear indicator output stores on empty source.
+      recomputeIndicators();
       return;
     }
 
@@ -327,6 +376,114 @@ export function createChart(
     } else {
       // Clamp to valid range (handles shrinking data sets).
       rightmostIndex = Math.max(0, Math.min(rightmostIndex, newLen - 1));
+    }
+
+    // Recompute all indicator outputs with the updated source data.
+    recomputeIndicators();
+  }
+
+  // ── indicator helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Extract OHLCV arrays from the first source Candlestick or Bar series.
+   * Returns `null` if no such series has been loaded yet.
+   */
+  function getSourceOhlcv(): {
+    times: UTCTimestamp[];
+    open: (number | null)[];
+    high: (number | null)[];
+    low: (number | null)[];
+    close: (number | null)[];
+    volume: (number | null)[];
+  } | null {
+    const src = seriesList.find(
+      (s) =>
+        !s.indicatorInstanceId &&
+        (s.type === 'Candlestick' || s.type === 'Bar') &&
+        s.store.length > 0,
+    );
+    if (!src) return null;
+
+    const n = timeIndex.length;
+    const times: UTCTimestamp[] = [];
+    const open: (number | null)[] = [];
+    const high: (number | null)[] = [];
+    const low: (number | null)[] = [];
+    const close: (number | null)[] = [];
+    const volume: (number | null)[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const t = timeIndex.at(i);
+      if (t == null) continue;
+      const row = src.store.getAt(i) as CandlestickData | null;
+      times.push(t);
+      open.push(row?.open ?? null);
+      high.push(row?.high ?? null);
+      low.push(row?.low ?? null);
+      close.push(row?.close ?? null);
+      volume.push(null); // volume tracked separately; not used by SMA/EMA/RSI/MACD
+    }
+
+    return { times, open, high, low, close, volume };
+  }
+
+  /**
+   * Recompute all indicator instances and push the results into their output
+   * series stores.  Called automatically from `rebuildIndex()` (full setData)
+   * and from the streaming update path in `makeSeries.update()`.
+   *
+   * The implementation always does a full recompute.  For the common case of
+   * a few hundred bars and simple indicators this is fast enough to run on
+   * every tick.  Incremental paths (using `SeriesStore.update()`) can be added
+   * per-indicator in the future without changing this interface.
+   */
+  function recomputeIndicators(): void {
+    if (indicatorInstances.size === 0) return;
+
+    const src = getSourceOhlcv();
+    if (!src) {
+      // No source data yet — clear all indicator stores.
+      for (const inst of indicatorInstances.values()) {
+        for (const sid of inst.outputSeriesIds) {
+          const ss = seriesList.find((s) => s.id === sid);
+          if (ss) {
+            ss.store.setData([]);
+            ss.store.realign();
+          }
+        }
+      }
+      return;
+    }
+
+    const ctx = {
+      times: src.times,
+      open: src.open,
+      high: src.high,
+      low: src.low,
+      close: src.close,
+      volume: src.volume,
+    };
+
+    for (const inst of indicatorInstances.values()) {
+      const result = inst.definition.compute({ ...ctx, params: inst.params });
+
+      for (let oi = 0; oi < inst.outputSeriesIds.length; oi++) {
+        const sid = inst.outputSeriesIds[oi];
+        const ss = seriesList.find((s) => s.id === sid);
+        if (!ss) continue;
+
+        const values = result.outputs[oi] ?? [];
+        // Build rows only for non-null values; the store will fill nulls via realign.
+        const rows: TimedRow[] = [];
+        for (let k = 0; k < values.length && k < src.times.length; k++) {
+          const v = values[k];
+          if (v == null) continue;
+          rows.push({ time: src.times[k], value: v } as TimedRow);
+        }
+
+        ss.store.setData(rows);
+        ss.store.realign();
+      }
     }
   }
 
@@ -966,6 +1123,11 @@ export function createChart(
           }
         }
 
+        // Keep indicator outputs in sync with streaming source data.
+        if (!sState.indicatorInstanceId) {
+          recomputeIndicators();
+        }
+
         scheduleRender();
       },
       applyOptions(opts: Partial<SeriesOptions>): void {
@@ -1101,6 +1263,99 @@ export function createChart(
     },
     setInteractionMode(newMode: InteractionMode): void {
       mode = newMode;
+    },
+    addIndicator(indicatorId: string, params?: Record<string, number>): string {
+      const def = getIndicator(indicatorId);
+      if (!def) throw new Error(`Unknown indicator: "${indicatorId}". Did you call registerIndicator()?`);
+
+      const instanceId: IndicatorInstanceId = `ind-${++nextIndicatorSeq}`;
+
+      // Merge caller params with definition defaults.
+      const resolvedParams: Record<string, number> = {};
+      for (const spec of def.inputs) {
+        resolvedParams[spec.name] = spec.default;
+      }
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          if (typeof v === 'number') resolvedParams[k] = v;
+        }
+      }
+
+      // Determine whether any output goes to a subpane.
+      const needsSubpane = def.outputs.some((o) => o.pane === 'subpane');
+      let subpaneId: PaneId | undefined;
+      if (needsSubpane) {
+        subpaneId = `ind-pane-${instanceId}`;
+        // Subpanes use a 0.35 height weight relative to the main pane (≈35% of chart).
+        panes.push({ id: subpaneId, height: 0.35 });
+      }
+
+      const outputSeriesIds: string[] = [];
+
+      for (let oi = 0; oi < def.outputs.length; oi++) {
+        const outSpec = def.outputs[oi];
+        const targetPaneId: PaneId =
+          outSpec.pane === 'subpane' ? (subpaneId ?? MAIN_PANE_ID) : MAIN_PANE_ID;
+
+        const seriesType: SeriesType = outSpec.seriesType as SeriesType;
+        const seriesOpts: Partial<SeriesOptions> = {
+          visible: true,
+          color: outSpec.color,
+          lineWidth: outSpec.lineWidth,
+          ...(seriesType === 'Histogram' ? { base: outSpec.base ?? 0 } : {}),
+        };
+
+        const sState: SeriesState = {
+          id: `series-${++nextSeriesSeq}`,
+          type: seriesType,
+          opts: { visible: true, ...seriesOpts },
+          store: new SeriesStore<TimedRow>(timeIndex),
+          paneId: targetPaneId,
+          scaleMargins: { top: 0, bottom: 0 },
+          separateScale: false,
+          indicatorInstanceId: instanceId,
+        };
+        seriesList.push(sState);
+        outputSeriesIds.push(sState.id);
+      }
+
+      const instance: IndicatorInstance = {
+        instanceId,
+        definition: def,
+        params: resolvedParams,
+        ownedPaneId: subpaneId,
+        outputSeriesIds,
+      };
+      indicatorInstances.set(instanceId, instance);
+
+      // Immediately compute with whatever source data is already loaded.
+      recomputeIndicators();
+      scheduleRender();
+
+      return instanceId;
+    },
+    removeIndicator(instanceId: string): void {
+      const inst = indicatorInstances.get(instanceId);
+      if (!inst) return;
+
+      // Remove output series.
+      for (const sid of inst.outputSeriesIds) {
+        const idx = seriesList.findIndex((s) => s.id === sid);
+        if (idx >= 0) seriesList.splice(idx, 1);
+      }
+
+      // Remove the owned subpane (if any).
+      if (inst.ownedPaneId) {
+        const pIdx = panes.findIndex((p) => p.id === inst.ownedPaneId);
+        if (pIdx >= 0) panes.splice(pIdx, 1);
+        // Re-assign any non-indicator series that somehow ended up in this pane.
+        for (const s of seriesList) {
+          if (s.paneId === inst.ownedPaneId) s.paneId = MAIN_PANE_ID;
+        }
+      }
+
+      indicatorInstances.delete(instanceId);
+      scheduleRender();
     },
     addPane(opts?: { height?: number; id?: string }): string {
       const id: PaneId = opts?.id ?? `pane-${++nextPaneSeq}`;
