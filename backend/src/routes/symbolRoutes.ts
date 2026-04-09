@@ -9,6 +9,7 @@ export function createSymbolRoutes() {
   router.use(verifyToken);
   router.get("/search", controller.search);
   router.get("/filters", controller.filters);
+  router.post("/missing-logo", controller.reportMissingLogo);
 
   return router;
 }

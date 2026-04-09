@@ -2,33 +2,10 @@ import { connectDB } from "./config/db";
 import { connectRedis } from "./config/redis";
 import { env } from "./config/env";
 import { createApp } from "./app";
-import net from "node:net";
+import { bootstrapKafkaProducerOnly, shutdownKafka } from "./kafka";
 import { logger } from "./utils/logger";
 
-async function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const tester = net
-      .createServer()
-      .once("error", () => resolve(false))
-      .once("listening", () => {
-        tester.close(() => resolve(true));
-      })
-      .listen(port);
-  });
-}
-
-async function resolvePort(preferredPort: number): Promise<number> {
-  const candidatePorts = Array.from({ length: 16 }, (_v, index) => preferredPort + index);
-
-  for (const port of candidatePorts) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await isPortAvailable(port)) {
-      return port;
-    }
-  }
-
-  throw new Error("NO_AVAILABLE_PORT");
-}
+type NodeErrorWithCode = Error & { code?: string };
 
 async function bootstrap() {
   logger.info("bootstrap_start");
@@ -44,23 +21,44 @@ async function bootstrap() {
   await connectDB();
   logger.info("bootstrap_connect_redis");
   await connectRedis();
+  await bootstrapKafkaProducerOnly();
   logger.info("bootstrap_create_app");
   const { httpServer } = createApp();
-  const listenPort = await resolvePort(env.PORT);
-
-  if (listenPort !== env.PORT) {
-    logger.warn("port_fallback", { requestedPort: env.PORT, selectedPort: listenPort });
-  }
+  const listenPort = env.PORT;
 
   httpServer.on("error", (error: unknown) => {
+    const nodeError = error as NodeErrorWithCode;
+    if (nodeError?.code === "EADDRINUSE") {
+      logger.error("http_server_port_in_use", {
+        port: listenPort,
+        code: nodeError.code,
+        error: nodeError.message,
+      });
+      process.exit(1);
+      return;
+    }
+
     logger.error("http_server_error", {
       error: error instanceof Error ? error.message : String(error),
+      code: nodeError?.code,
     });
   });
 
   httpServer.listen(listenPort, () => {
     logger.info("backend_listening", { port: listenPort });
   });
+
+  const stop = async () => {
+    logger.info("backend_shutdown_start");
+    await shutdownKafka();
+    httpServer.close(() => {
+      logger.info("backend_shutdown_complete");
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGINT", () => void stop());
+  process.on("SIGTERM", () => void stop());
 }
 
 bootstrap().catch((error) => {

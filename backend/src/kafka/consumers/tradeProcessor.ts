@@ -1,7 +1,7 @@
 import { createConsumer, MessageHandler } from "../consumer";
 import { KAFKA_TOPICS, KafkaEvent, TradeResultPayload } from "../topics";
 import { logger } from "../../utils/logger";
-import { redisClient } from "../../config/redis";
+import { isRedisReady, redisClient } from "../../config/redis";
 
 /**
  * Trade Processor Consumer
@@ -20,9 +20,9 @@ const handleTradeResult: MessageHandler = async (event: KafkaEvent) => {
   });
 
   // Cache latest trade in Redis for fast dashboard reads
-  if (redisClient.isOpen && payload.success) {
+  if (isRedisReady() && payload.success) {
     const cacheKey = `user:${payload.userId}:latest_trade`;
-    await redisClient.set(cacheKey, JSON.stringify(payload), { EX: 3600 });
+    await redisClient.set(cacheKey, JSON.stringify(payload), "EX", 3600);
   }
 };
 

@@ -112,6 +112,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentCandleIndex, setCurrentCandleIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
+  const [socketReady, setSocketReady] = useState(false);
+  const [appReady, setAppReady] = useState(false);
 
   const hydrateAuth = useCallback((nextToken: string, email: string, name?: string) => {
     setToken(nextToken);
@@ -125,11 +127,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setApiToken(null);
       disconnectSocket();
+      setSocketReady(false);
+      setAppReady(false);
       return;
     }
 
     setApiToken(token);
     const socket = connectSocket(token);
+    setSocketReady(false);
+
+    const forceReadyTimeout = window.setTimeout(() => {
+      setAppReady(true);
+      setSocketReady(true);
+    }, 3000);
+
+    const onConnect = () => {
+      console.log("Socket connected");
+      setAppReady(true);
+    };
+
+    const onReady = () => {
+      setSocketReady(true);
+      setAppReady(true);
+    };
+
+    const onConnectError = (err: unknown) => {
+      console.error("Socket error:", err);
+      setSocketReady(true);
+      setAppReady(true);
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('ready', onReady);
+    socket.on('connect_error', onConnectError);
 
     socket.on('candle:update', (payload) => {
       setCurrentCandleIndex(payload.currentIndex);
@@ -148,7 +178,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      window.clearTimeout(forceReadyTimeout);
       const active = getSocket();
+      active?.off('connect', onConnect);
+      active?.off('ready', onReady);
+      active?.off('connect_error', onConnectError);
       active?.off('candle:update');
       active?.off('portfolio:update');
       active?.off('trade:executed');
@@ -356,10 +390,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [resetPortfolio]);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && appReady) {
       void initializeSimulation();
     }
-  }, [isAuthenticated, initializeSimulation]);
+  }, [isAuthenticated, appReady, initializeSimulation]);
 
   return (
     <AppContext.Provider value={{

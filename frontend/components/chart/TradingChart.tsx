@@ -4,7 +4,7 @@ import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
-import { selectNearestDrawingId } from '@/services/tools/toolEngine';
+import { nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -631,7 +631,6 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         onMouseMove={(event) => updateHoverPoint(event.clientX, event.clientY)}
         onMouseLeave={() => {
           setHoverPoint(null);
-          setHoverRowIndex(transformedData.ohlcRows.length ? transformedData.ohlcRows.length - 1 : null);
         }}
       >
         <div className="chart-wrapper h-full w-full touch-pan-y">

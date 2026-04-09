@@ -4,6 +4,7 @@ export const KAFKA_TOPICS = {
   PORTFOLIO_UPDATE: "portfolio.update",
   SIMULATION_EVENTS: "simulation.events",
   USER_ACTIVITY: "user.activity",
+  SYMBOL_LOGO_ENRICHED: "symbol.logo.enriched",
 } as const;
 
 export type KafkaTopic = (typeof KAFKA_TOPICS)[keyof typeof KAFKA_TOPICS];
@@ -63,4 +64,12 @@ export interface UserActivityPayload {
   action: "login" | "register" | "google_login" | "session_start";
   ip?: string;
   userAgent?: string;
+}
+
+export interface SymbolLogoEnrichedPayload {
+  fullSymbol: string;
+  symbol: string;
+  domain?: string;
+  logoUrl: string;
+  source: "cdn" | "remote";
 }

@@ -6,6 +6,7 @@ import {
   PortfolioUpdatePayload,
   SimulationEventPayload,
   UserActivityPayload,
+  SymbolLogoEnrichedPayload,
 } from "../kafka/topics";
 
 // --- Trade Events ---
@@ -34,4 +35,10 @@ export function produceSimulationEvent(payload: SimulationEventPayload): void {
 
 export function produceUserActivity(payload: UserActivityPayload): void {
   produce(KAFKA_TOPICS.USER_ACTIVITY, payload, payload.userId);
+}
+
+// --- Symbol Events ---
+
+export function produceSymbolLogoEnriched(payload: SymbolLogoEnrichedPayload): void {
+  produce(KAFKA_TOPICS.SYMBOL_LOGO_ENRICHED, payload, payload.fullSymbol);
 }

@@ -1,7 +1,7 @@
 import { createConsumer, MessageHandler } from "../consumer";
 import { KAFKA_TOPICS, KafkaEvent, PortfolioUpdatePayload } from "../topics";
 import { logger } from "../../utils/logger";
-import { redisClient } from "../../config/redis";
+import { isRedisReady, redisClient } from "../../config/redis";
 
 /**
  * Portfolio Updater Consumer
@@ -19,7 +19,7 @@ const handlePortfolioUpdate: MessageHandler = async (event: KafkaEvent) => {
   });
 
   // Invalidate portfolio cache so next read fetches fresh data
-  if (redisClient.isOpen) {
+  if (isRedisReady()) {
     const cacheKey = `user:${payload.userId}:portfolio`;
     await redisClient.del(cacheKey);
   }

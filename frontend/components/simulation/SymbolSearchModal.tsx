@@ -11,6 +11,8 @@ import {
 } from "@/lib/assetSearch";
 import { FilterDropdown, ModalPanel, ModalTriggerButton, SYMBOL_CATEGORIES } from "@/components/simulation/symbolSearchModalParts";
 
+const FALLBACK_ICON = "/icons/exchange/default.svg";
+
 interface SymbolSearchModalProps {
   open: boolean;
   selectedSymbol: string;
@@ -40,7 +42,7 @@ export default function SymbolSearchModal({
   const [rows, setRows] = useState<AssetSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
 
@@ -56,8 +58,9 @@ export default function SymbolSearchModal({
 
   const [selectedFutureRoot, setSelectedFutureRoot] = useState<AssetSearchItem | null>(null);
 
-  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number }>());
+  const resultCache = useRef(new Map<string, { rows: AssetSearchItem[]; hasMore: boolean; total: number; nextCursor: string | null }>());
   const listContainerRef = useRef<HTMLDivElement | null>(null);
+  const paginationInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -134,7 +137,7 @@ export default function SymbolSearchModal({
         setRows(cached.rows);
         setHasMore(cached.hasMore);
         setTotal(cached.total);
-        setPage(1);
+        setNextCursor(cached.nextCursor);
         return;
       }
 
@@ -150,23 +153,24 @@ export default function SymbolSearchModal({
           exchangeType: exchangeType === "all" ? undefined : exchangeType,
           futureCategory: futureCategory === "all" ? undefined : futureCategory,
           economyCategory: economyCategory === "all" ? undefined : economyCategory,
-          page: 1,
           limit: 50,
         });
 
         setRows(response.assets);
         setHasMore(response.hasMore);
         setTotal(response.total);
-        setPage(1);
+        setNextCursor(response.nextCursor ?? null);
         resultCache.current.set(filterKey, {
           rows: response.assets,
           hasMore: response.hasMore,
           total: response.total,
+          nextCursor: response.nextCursor ?? null,
         });
       } catch {
         setRows([]);
         setHasMore(false);
         setTotal(0);
+        setNextCursor(null);
       } finally {
         setLoading(false);
       }
@@ -185,15 +189,15 @@ export default function SymbolSearchModal({
     if (!container) return;
 
     const onScroll = () => {
-      if (loading || loadingMore || !hasMore) return;
+      if (loading || loadingMore || paginationInFlightRef.current || !hasMore || !nextCursor) return;
 
       const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
       if (distanceToBottom > 80) return;
 
+      paginationInFlightRef.current = true;
       setLoadingMore(true);
       void (async () => {
         try {
-          const nextPage = page + 1;
           const response = await searchAssets({
             q: query.trim(),
             category: category === "all" ? undefined : category,
@@ -204,7 +208,7 @@ export default function SymbolSearchModal({
             exchangeType: exchangeType === "all" ? undefined : exchangeType,
             futureCategory: futureCategory === "all" ? undefined : futureCategory,
             economyCategory: economyCategory === "all" ? undefined : economyCategory,
-            page: nextPage,
+            cursor: nextCursor,
             limit: 50,
           });
 
@@ -218,16 +222,18 @@ export default function SymbolSearchModal({
               rows: merged,
               hasMore: response.hasMore,
               total: response.total,
+              nextCursor: response.nextCursor ?? null,
             });
             return merged;
           });
 
           setHasMore(response.hasMore);
           setTotal(response.total);
-          setPage(nextPage);
+          setNextCursor(response.nextCursor ?? null);
         } catch {
           // Keep existing list on pagination failures.
         } finally {
+          paginationInFlightRef.current = false;
           setLoadingMore(false);
         }
       })();
@@ -235,7 +241,7 @@ export default function SymbolSearchModal({
 
     container.addEventListener("scroll", onScroll);
     return () => container.removeEventListener("scroll", onScroll);
-  }, [open, loading, loadingMore, hasMore, page, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, filterKey]);
+  }, [open, loading, loadingMore, hasMore, nextCursor, query, category, country, type, sector, source, exchangeType, futureCategory, economyCategory, filterKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -295,7 +301,7 @@ export default function SymbolSearchModal({
 
           <div className="space-y-3 px-5 py-4">
             <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-secondary/20 px-3 py-2.5">
-              <AssetAvatar src={selectedFutureRoot.iconUrl} label={selectedFutureRoot.name} className="h-8 w-8 rounded-full object-cover" />
+              <AssetAvatar src={selectedFutureRoot.iconUrl || FALLBACK_ICON} label={selectedFutureRoot.name} className="h-8 w-8 rounded-full object-cover" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{selectedFutureRoot.ticker}</p>
                 <p className="truncate text-xs text-muted-foreground">{selectedFutureRoot.name}</p>
@@ -318,7 +324,7 @@ export default function SymbolSearchModal({
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-2.5">
-                    <AssetAvatar src={contract.iconUrl} label={contract.name} className="h-7 w-7 rounded-full object-cover" />
+                    <AssetAvatar src={contract.iconUrl || FALLBACK_ICON} label={contract.name} className="h-7 w-7 rounded-full object-cover" />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-foreground">{contract.ticker}</p>
                       <p className="truncate text-xs text-muted-foreground">{contract.name}</p>
@@ -544,7 +550,7 @@ export default function SymbolSearchModal({
                 }`}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <AssetAvatar src={item.iconUrl} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                    <AssetAvatar src={item.iconUrl || FALLBACK_ICON} label={item.name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
 
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-foreground">{item.ticker}</p>

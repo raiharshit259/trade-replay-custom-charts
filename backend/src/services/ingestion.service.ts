@@ -1,5 +1,6 @@
 import { SymbolModel } from "../models/Symbol";
 import { logger } from "../utils/logger";
+import { inferDomainForSymbol } from "./domainInference.service";
 
 export interface NormalizedSymbol {
   symbol: string;
@@ -34,40 +35,8 @@ const CRYPTO_ICON_ID_MAP: Record<string, string> = {
   LTC: "litecoin",
 };
 
-const STOCK_DOMAIN_MAP: Record<string, string> = {
-  AAPL: "apple.com",
-  MSFT: "microsoft.com",
-  GOOGL: "abc.xyz",
-  GOOG: "abc.xyz",
-  AMZN: "amazon.com",
-  NVDA: "nvidia.com",
-  META: "meta.com",
-  TSLA: "tesla.com",
-  JPM: "jpmorganchase.com",
-  WMT: "walmart.com",
-  BAC: "bankofamerica.com",
-  V: "visa.com",
-  MA: "mastercard.com",
-  RELIANCE: "ril.com",
-  TCS: "tcs.com",
-  INFY: "infosys.com",
-  HDFCBANK: "hdfcbank.com",
-  ICICIBANK: "icicibank.com",
-  ITC: "itcportal.com",
-  LT: "larsentoubro.com",
-  SBIN: "sbi.co.in",
-  DMART: "avenuesupermarts.com",
-  TITAN: "titancompany.in",
-  ADANIENT: "adani.com",
-  ADANIPORTS: "adaniports.com",
-};
-
 function coinGeckoIconUrl(id: string): string {
   return `https://assets.coingecko.com/coins/images/${id}/small.png`;
-}
-
-function stockDomainFor(symbol: string): string | undefined {
-  return STOCK_DOMAIN_MAP[symbol.trim().toUpperCase()];
 }
 
 function normalizeSymbol(input: NormalizedSymbol): NormalizedSymbol {
@@ -143,15 +112,16 @@ async function ingestUsStocks(): Promise<NormalizedSymbol[]> {
       .map((row) => {
         const symbol = row["ACT Symbol"];
         const listingExchange = row["Exchange"] === "N" ? "NYSE" : row["Exchange"] === "A" ? "NYSEARCA" : "NYSE";
+        const name = row["Security Name"] || symbol;
         return normalizeSymbol({
           symbol,
           fullSymbol: `${listingExchange}:${symbol}`,
-          name: row["Security Name"] || symbol,
+          name,
           exchange: listingExchange,
           country: "US",
           type: "stock",
           currency: "USD",
-          companyDomain: stockDomainFor(symbol),
+          companyDomain: inferDomainForSymbol({ symbol, name, exchange: listingExchange }) ?? undefined,
           popularity: 7,
           source: "nasdaq-trader",
         });
@@ -194,7 +164,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
           country: "IN",
           type: "stock",
           currency: "INR",
-          companyDomain: stockDomainFor(symbol),
+          companyDomain: inferDomainForSymbol({ symbol, name, exchange: "NSE" }) ?? undefined,
           popularity: 8,
           source: "nse-equity-list",
         });
@@ -209,7 +179,7 @@ async function ingestIndiaStocks(): Promise<NormalizedSymbol[]> {
         country: "IN",
         type: "stock",
         currency: "INR",
-        companyDomain: stockDomainFor(symbol),
+        companyDomain: inferDomainForSymbol({ symbol, name: symbol, exchange: "BSE" }) ?? undefined,
         popularity: 6,
         source: "bse-curated",
       }));
@@ -416,6 +386,8 @@ export async function ingestGlobalSymbols(): Promise<{ upserted: number; totalSo
           currency: item.currency,
           iconUrl: item.iconUrl ?? "",
           companyDomain: item.companyDomain ?? "",
+          logoValidatedAt: null,
+          s3Icon: "",
           popularity: item.popularity,
           source: item.source,
         },
