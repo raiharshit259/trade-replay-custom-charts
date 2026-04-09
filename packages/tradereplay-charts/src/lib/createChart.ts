@@ -3,7 +3,7 @@
 import { TimeIndex } from './data/timeIndex';
 import { SeriesStore, type TimedRow } from './data/seriesStore';
 import { type PaneId, type PaneDef, PANE_DIVIDER_H, computePaneLayout, resizePaneHeights } from './layout/panes';
-import { priceToY, yToPrice, sepPriceToY, sepYToPrice } from './scales/priceScale';
+import { priceToY, yToPrice, sepPriceToY, sepYToPrice, padPriceRange } from './scales/priceScale';
 import { getIndicator } from '../indicators/registry';
 import { registerBuiltins } from '../indicators/builtins/index';
 import type { IndicatorDefinition, IndicatorInstanceId } from '../indicators/types';
@@ -224,6 +224,10 @@ function fmtTime(ts: UTCTimestamp, interval: number): string {
   return `${hh}:${mm}`;
 }
 
+function snapCssPixel(value: number): number {
+  return Math.round(value) + 0.5;
+}
+
 /** Bars within this distance of the live edge are treated as "at live edge"
  * for the purpose of auto-advancing rightmostIndex on new streaming bars. */
 const LIVE_EDGE_THRESHOLD = 2;
@@ -270,6 +274,12 @@ interface PaneRenderState {
   max: number;
 }
 
+interface PanePriceScaleState {
+  mode: 'auto' | 'manual';
+  min: number;
+  max: number;
+}
+
 // ─── createChart ─────────────────────────────────────────────────────────────
 
 export function createChart(
@@ -301,6 +311,7 @@ export function createChart(
 
   /** Ordered list of pane definitions; main pane is always first. */
   const panes: PaneDef[] = [{ id: MAIN_PANE_ID, height: 1 }];
+  const panePriceScales = new Map<PaneId, PanePriceScaleState>();
   let nextPaneSeq = 0;
   let nextSeriesSeq = 0;
   let nextIndicatorSeq = 0;
@@ -339,6 +350,26 @@ export function createChart(
     const max = (timeIndex.length - 1) + MAX_RIGHT_OFFSET_BARS;
     const min = Math.min(timeIndex.length - 1, Math.max(0, vbars() - 0.5));
     return Math.max(min, Math.min(max, next));
+  }
+
+  function getPanePriceScaleState(paneId: PaneId): PanePriceScaleState | undefined {
+    return panePriceScales.get(paneId);
+  }
+
+  function setPanePriceScaleAuto(paneId: PaneId): void {
+    panePriceScales.delete(paneId);
+  }
+
+  function setPanePriceScaleManual(paneId: PaneId, min: number, max: number): void {
+    panePriceScales.set(paneId, { mode: 'manual', min, max });
+  }
+
+  function resolvePriceScaleRange(paneId: PaneId, autoMin: number, autoMax: number): { min: number; max: number } {
+    const state = getPanePriceScaleState(paneId);
+    if (state?.mode === 'manual') {
+      return { min: state.min, max: state.max };
+    }
+    return { min: autoMin, max: autoMax };
   }
 
   // bar index → screen x (center of bar)
@@ -543,9 +574,7 @@ export function createChart(
       }
     }
     if (!isFinite(min) || !isFinite(max)) return null;
-    if (min === max) { min -= 1; max += 1; }
-    const pad = (max - min) * PRICE_PADDING;
-    return { min: min - pad, max: max + pad };
+    return padPriceRange(min, max, PRICE_PADDING);
   }
 
   interface RenderState {
@@ -572,7 +601,8 @@ export function createChart(
         if (r) { min = Math.min(min, r.min); max = Math.max(max, r.max); }
       }
       if (!isFinite(min)) { min = 0; max = 100; }
-      return { id, top, h, min, max };
+      const scaleRange = resolvePriceScaleRange(id, min, max);
+      return { id, top, h, min: scaleRange.min, max: scaleRange.max };
     });
 
     const seriesRanges = seriesList.map((s) =>
@@ -607,7 +637,7 @@ export function createChart(
       const hStep = niceStep(priceRange, 6);
       let p = Math.ceil(pane.min / hStep) * hStep;
       while (p <= pane.max) {
-        const y = priceToY(p, pane.min, pane.max, pane.top, pane.h);
+        const y = snapCssPixel(priceToY(p, pane.min, pane.max, pane.top, pane.h));
         if (y >= pane.top && y <= pane.top + pane.h) {
           ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
         }
@@ -619,7 +649,7 @@ export function createChart(
     const minSpacing = 60;
     const bpl = Math.max(1, Math.ceil(minSpacing / barWidth));
     for (let i = Math.ceil(rs.firstBar / bpl) * bpl; i <= rs.lastBar; i += bpl) {
-      const x = barToX(i);
+      const x = snapCssPixel(barToX(i));
       if (x >= 0 && x <= w) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, totalH); ctx.stroke();
       }
@@ -641,7 +671,7 @@ export function createChart(
       if (pane.top === 0) continue; // no divider above the first pane
       // The gap starts at (previous pane bottom) = pane.top - PANE_DIVIDER_H.
       // Draw a line through the vertical centre of the gap.
-      const divY = pane.top - Math.round(PANE_DIVIDER_H / 2);
+      const divY = snapCssPixel(pane.top - Math.round(PANE_DIVIDER_H / 2));
       ctx.beginPath(); ctx.moveTo(0, divY); ctx.lineTo(w + PRICE_AXIS_W, divY); ctx.stroke();
     }
   }
@@ -688,7 +718,7 @@ export function createChart(
       const hStep = niceStep(priceRange, 6);
       let p = Math.ceil(pane.min / hStep) * hStep;
       while (p <= pane.max) {
-        const y = priceToY(p, pane.min, pane.max, pane.top, pane.h);
+        const y = snapCssPixel(priceToY(p, pane.min, pane.max, pane.top, pane.h));
         if (y >= pane.top && y <= pane.top + pane.h) {
           ctx.fillText(fmtPrice(p), w + 6, y);
         }
@@ -706,7 +736,7 @@ export function createChart(
     for (let i = firstBar; i <= lastBar; i++) {
       const row = s.store.getAt(i) as CandlestickData | null;
       if (!row) continue;
-      const x = barToX(i);
+      const x = snapCssPixel(barToX(i));
       if (x < -bw || x > w + bw) continue;
 
       const isUp = row.close >= row.open;
@@ -753,7 +783,7 @@ export function createChart(
     for (let i = firstBar; i <= lastBar; i++) {
       const row = s.store.getAt(i) as CandlestickData | null;
       if (!row) continue;
-      const x = barToX(i);
+      const x = snapCssPixel(barToX(i));
       if (x < -bw || x > w + bw) continue;
 
       const isUp = row.close >= row.open;
@@ -825,7 +855,7 @@ export function createChart(
     for (let i = firstBar; i <= lastBar; i++) {
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
-      const x = barToX(i);
+      const x = snapCssPixel(barToX(i));
       const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
       if (!started) { ctx.moveTo(x, y); started = true; }
       else ctx.lineTo(x, y);
@@ -848,7 +878,7 @@ export function createChart(
     for (let i = firstBar; i <= lastBar; i++) {
       const row = s.store.getAt(i) as LineData | null;
       if (!row) continue;
-      const x = barToX(i);
+      const x = snapCssPixel(barToX(i));
       const y = priceToY(row.value, pane.min, pane.max, pane.top, pane.h);
       if (!started) { ctx.moveTo(x, y); firstX = x; started = true; }
       else ctx.lineTo(x, y);
@@ -972,6 +1002,8 @@ export function createChart(
   }
 
   function drawCrosshair(rs: RenderState): void {
+    canvas.dataset.crosshairPrice = '';
+    canvas.dataset.crosshairTime = '';
     if (crosshairX == null || crosshairY == null) return;
     const w = cw();
     const totalH = ch();
@@ -985,6 +1017,8 @@ export function createChart(
       }
     }
 
+    const snappedCrosshairX = snapCssPixel(crosshairX);
+    const snappedCrosshairY = snapCssPixel(crosshairY);
     if (crosshairX < 0 || crosshairX > w) return;
     // If cursor is in the time axis strip or below, skip horizontal line.
     if (!activePane && crosshairY >= totalH) return;
@@ -994,26 +1028,27 @@ export function createChart(
     // Vertical line — spans entire chart area across all panes.
     ctx.strokeStyle = crosshairVColor;
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(crosshairX, 0); ctx.lineTo(crosshairX, totalH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(snappedCrosshairX, 0); ctx.lineTo(snappedCrosshairX, totalH); ctx.stroke();
 
     // Horizontal line — only within the active pane.
     if (activePane) {
       ctx.strokeStyle = crosshairHColor;
-      ctx.beginPath(); ctx.moveTo(0, crosshairY); ctx.lineTo(w, crosshairY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, snappedCrosshairY); ctx.lineTo(w, snappedCrosshairY); ctx.stroke();
 
       ctx.setLineDash([]);
 
       // Price label on the right axis.
-      const price = yToPrice(crosshairY, activePane.min, activePane.max, activePane.top, activePane.h);
+      const price = yToPrice(snappedCrosshairY, activePane.min, activePane.max, activePane.top, activePane.h);
       const pLabel = fmtPrice(price);
+      canvas.dataset.crosshairPrice = pLabel;
       ctx.font = `${fontSize}px ${fontFamily}`;
       ctx.textBaseline = 'middle';
       const labelH = 16;
       ctx.fillStyle = crosshairHColor;
-      ctx.fillRect(w + 2, crosshairY - labelH / 2, PRICE_AXIS_W - 4, labelH);
+      ctx.fillRect(w + 2, snappedCrosshairY - labelH / 2, PRICE_AXIS_W - 4, labelH);
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
-      ctx.fillText(pLabel, w + 6, crosshairY);
+      ctx.fillText(pLabel, w + 6, snappedCrosshairY);
     }
 
     ctx.setLineDash([]);
@@ -1025,13 +1060,14 @@ export function createChart(
       const t = timeIndex.at(barIdx);
       if (t != null) {
         const tLabel = fmtTime(t, interval);
+        canvas.dataset.crosshairTime = tLabel;
         ctx.textAlign = 'center';
         const labelH = 16;
         const tlW = Math.max(50, ctx.measureText(tLabel).width + 12);
         ctx.fillStyle = crosshairVColor;
-        ctx.fillRect(crosshairX - tlW / 2, totalH + 2, tlW, labelH);
+        ctx.fillRect(snappedCrosshairX - tlW / 2, totalH + 2, tlW, labelH);
         ctx.fillStyle = '#fff';
-        ctx.fillText(tLabel, crosshairX, totalH + 2 + labelH / 2);
+        ctx.fillText(tLabel, snappedCrosshairX, totalH + 2 + labelH / 2);
       }
     }
   }
@@ -1051,6 +1087,9 @@ export function createChart(
     ctx.clearRect(0, 0, width, height);
 
     const rs = computeRenderState();
+    canvas.dataset.priceScale = rs.paneStates.length > 0
+      ? `${rs.paneStates[0].min.toFixed(2)}:${rs.paneStates[0].max.toFixed(2)}`
+      : '';
 
     drawBackground();
     drawGrid(rs);
@@ -1093,6 +1132,41 @@ export function createChart(
   let wheelAnchorX: number | null = null;
   let wheelRafId: number | null = null;
   let paneResizeDrag: { dividerIndex: number; startY: number; startPanes: PaneDef[] } | null = null;
+  let priceAxisDrag: {
+    paneId: PaneId;
+    startY: number;
+    startMin: number;
+    startMax: number;
+  } | null = null;
+
+  function getPaneAtY(rs: RenderState, y: number): PaneRenderState | null {
+    return rs.paneStates.find((pane) => y >= pane.top && y < pane.top + pane.h) ?? null;
+  }
+
+  function updatePriceAxisDrag(y: number): void {
+    if (!priceAxisDrag) return;
+    const rs = computeRenderState();
+    const pane = rs.paneStates.find((item) => item.id === priceAxisDrag?.paneId);
+    if (!pane) return;
+
+    const startRange = priceAxisDrag.startMax - priceAxisDrag.startMin || 1;
+    const zoomFactor = Math.exp((y - priceAxisDrag.startY) * 0.01);
+    const nextRange = Math.min(Math.max(startRange * zoomFactor, Math.max(Math.abs(priceAxisDrag.startMin), Math.abs(priceAxisDrag.startMax), 1) * 0.0001), startRange * 100);
+    const anchorPrice = yToPrice(priceAxisDrag.startY, priceAxisDrag.startMin, priceAxisDrag.startMax, pane.top, pane.h);
+    const anchorRatio = (anchorPrice - priceAxisDrag.startMin) / startRange;
+    const nextMin = anchorPrice - anchorRatio * nextRange;
+    const nextMax = nextMin + nextRange;
+    setPanePriceScaleManual(priceAxisDrag.paneId, nextMin, nextMax);
+    scheduleRender();
+  }
+
+  function resetPriceAxisScale(y: number): void {
+    const rs = computeRenderState();
+    const pane = getPaneAtY(rs, y);
+    if (!pane) return;
+    setPanePriceScaleAuto(pane.id);
+    scheduleRender();
+  }
 
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
@@ -1126,6 +1200,22 @@ export function createChart(
 
   function onPointerDown(e: PointerEvent): void {
     const rs = computeRenderState();
+    if (e.offsetX >= cw()) {
+      const activePane = getPaneAtY(rs, e.offsetY);
+      if (activePane) {
+        priceAxisDrag = {
+          paneId: activePane.id,
+          startY: e.offsetY,
+          startMin: activePane.min,
+          startMax: activePane.max,
+        };
+        dragStart = null;
+        paneResizeDrag = null;
+        canvas.setPointerCapture(e.pointerId);
+        scheduleRender();
+        return;
+      }
+    }
     for (let i = 0; i < rs.paneStates.length - 1; i += 1) {
       const dividerTop = rs.paneStates[i].top + rs.paneStates[i].h;
       if (e.offsetY >= dividerTop && e.offsetY <= dividerTop + PANE_DIVIDER_H) {
@@ -1141,6 +1231,11 @@ export function createChart(
   }
 
   function onPointerMove(e: PointerEvent): void {
+    if (priceAxisDrag != null) {
+      updatePriceAxisDrag(e.offsetY);
+      return;
+    }
+
     if (paneResizeDrag != null) {
       const deltaY = e.offsetY - paneResizeDrag.startY;
       const resized = resizePaneHeights(paneResizeDrag.startPanes, ch(), paneResizeDrag.dividerIndex, deltaY, 48);
@@ -1160,13 +1255,21 @@ export function createChart(
 
   function onPointerUp(e: PointerEvent): void {
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    priceAxisDrag = null;
     dragStart = null;
     paneResizeDrag = null;
+  }
+
+  function onDoubleClick(e: MouseEvent): void {
+    if (e.offsetX < cw()) return;
+    resetPriceAxisScale(e.offsetY);
   }
 
   function onPointerLeave(): void {
     crosshairX = null;
     crosshairY = null;
+    canvas.dataset.crosshairPrice = '';
+    canvas.dataset.crosshairTime = '';
     scheduleRender();
   }
 
@@ -1175,6 +1278,7 @@ export function createChart(
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointerleave', onPointerLeave);
+  canvas.addEventListener('dblclick', onDoubleClick);
 
   // ── series factory ────────────────────────────────────────────────────────
 
@@ -1468,6 +1572,7 @@ export function createChart(
       const idx = panes.findIndex((p) => p.id === id);
       if (idx < 0) return;
       panes.splice(idx, 1);
+      panePriceScales.delete(id);
       // Re-assign orphaned series to the main pane.
       for (const s of seriesList) {
         if (s.paneId === id) s.paneId = MAIN_PANE_ID;
@@ -1490,6 +1595,7 @@ export function createChart(
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('pointerleave', onPointerLeave);
+      canvas.removeEventListener('dblclick', onDoubleClick);
       if (container.contains(canvas)) container.removeChild(canvas);
     },
   };

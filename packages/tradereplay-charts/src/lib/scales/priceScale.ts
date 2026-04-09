@@ -13,6 +13,34 @@
 import type { ScaleMargins } from '../createChart';
 
 /**
+ * Expand a raw price range with a symmetric padding fraction.
+ *
+ * This keeps visible prices away from the pane edges while preserving the
+ * current scale ratio. When the input span is zero, the range is widened
+ * around the midpoint so coordinate transforms remain well-defined.
+ */
+export function padPriceRange(
+  min: number,
+  max: number,
+  paddingFraction: number,
+): { min: number; max: number } {
+  let nextMin = min;
+  let nextMax = max;
+
+  if (nextMin === nextMax) {
+    nextMin -= 1;
+    nextMax += 1;
+  }
+
+  const span = nextMax - nextMin || 1;
+  const pad = span * paddingFraction;
+  return {
+    min: nextMin - pad,
+    max: nextMax + pad,
+  };
+}
+
+/**
  * Map a price value to a canvas Y coordinate within a pane.
  *
  * @param price    The price to convert.

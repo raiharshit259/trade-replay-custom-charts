@@ -110,7 +110,11 @@ test("shared symbol modal works in portfolio and simulation", async ({ page }) =
 
   const ixicRowSelector = '[data-testid="symbol-result-row"][data-symbol="IXIC"]';
   await expect(page.locator(ixicRowSelector).first()).toBeVisible();
-  await page.locator(ixicRowSelector).first().click({ force: true });
+  await page.locator(ixicRowSelector).first().evaluate((element) => {
+    if (element instanceof HTMLElement) {
+      element.click();
+    }
+  });
 
   await expectSymbolModalClosed(page);
 

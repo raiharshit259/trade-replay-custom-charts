@@ -32,6 +32,8 @@ import { chartTypeGroups, chartTypeLabels } from '@/services/chart/dataTransform
 import { toolGroups, type ToolCategory, type ToolState, type ToolVariant } from '@/services/tools/toolRegistry';
 import { Redo2, Undo2 } from 'lucide-react';
 
+type CrosshairSnapMode = 'free' | 'time' | 'ohlc';
+
 const iconMap = {
   Move3d: Move3d,
   Waves: Waves,
@@ -68,6 +70,8 @@ type ChartToolbarProps = {
   onVariant: (group: ToolCategory, variant: ToolVariant) => void;
   magnetMode: boolean;
   setMagnetMode: (value: boolean) => void;
+  crosshairSnapMode: CrosshairSnapMode;
+  setCrosshairSnapMode: (value: CrosshairSnapMode) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
@@ -91,6 +95,8 @@ export default function ChartToolbar({
   onVariant,
   magnetMode,
   setMagnetMode,
+  crosshairSnapMode,
+  setCrosshairSnapMode,
   onUndo,
   onRedo,
   onClear,
@@ -199,6 +205,17 @@ export default function ChartToolbar({
             >
               <Magnet size={16} />
             </button>
+            <select
+              data-testid="chart-snap-mode"
+              value={crosshairSnapMode}
+              onChange={(event) => setCrosshairSnapMode(event.target.value as CrosshairSnapMode)}
+              className="rounded-md border border-border/70 bg-background/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground outline-none hover:text-foreground"
+              title="Crosshair snap mode"
+            >
+              <option value="free">Free</option>
+              <option value="time">Time</option>
+              <option value="ohlc">OHLC</option>
+            </select>
             <button
               type="button"
               data-testid="tool-minimize"

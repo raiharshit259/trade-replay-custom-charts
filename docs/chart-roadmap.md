@@ -4,7 +4,7 @@
 - Chart engine: Canvas2D runtime only, no TradingView widget or lightweight-charts runtime.
 - Chart types implemented: 20 / 20+
 - Indicators implemented: 101 / 100+
-- UX parity: in progress
+- UX parity: in progress, starting with price-axis ergonomics
 
 ## Performance
 - Benchmark command: `npm --prefix packages/tradereplay-charts run bench` after starting the app with `npm run app`.
@@ -15,8 +15,11 @@
 - Wheel and pan bursts stay well under the loose regression thresholds used in e2e.
 
 ## UX Checklist
+- [x] Price-axis drag scale and autoscale reset
 - [x] Smooth pan/zoom with cursor-anchored wheel zoom
 - [x] Crosshair with coordinate mapping and snap support
+- [x] Crosshair labels exposed for deterministic regression checks
+- [x] Time-scale "Go to live" affordance when user pans away
 - [x] Draw trend lines and shapes
 - [x] Select drawings from the object tree
 - [x] Delete drawings
@@ -28,6 +31,7 @@
 - [ ] Screenshot export of chart + drawings
 - [x] Keyboard Escape cancels active draft/move interactions
 - [x] Stable data-testid hooks for drawing object/delete actions
+- [x] Endpoint dragging coverage for selected trend lines
 - [ ] 60fps interactions on 10k bars
 - [ ] Listener duplication / memory leak audit
 

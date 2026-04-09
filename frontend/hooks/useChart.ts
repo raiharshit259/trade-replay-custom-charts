@@ -17,6 +17,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export type CrosshairSnapMode = 'free' | 'time' | 'ohlc';
+
 export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
@@ -149,7 +151,7 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     applySeriesVisibility(map, chartType);
   }, [chartType]);
 
-  const pointerToDataPoint = useCallback((clientX: number, clientY: number, magnetMode: boolean) => {
+  const pointerToDataPoint = useCallback((clientX: number, clientY: number, snapMode: CrosshairSnapMode, magnetMode: boolean) => {
     const overlay = overlayRef.current;
     const chart = chartRef.current;
     const series = getActiveSeries();
@@ -165,13 +167,18 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     const time = toTimestampFromTime(rawTime);
     if (time == null || rawPrice == null || Number.isNaN(rawPrice)) return null;
 
-    if (!magnetMode || !transformedData.times.length) {
+    const effectiveSnapMode = magnetMode ? 'ohlc' : snapMode;
+    if (!transformedData.times.length || effectiveSnapMode === 'free') {
       return { time, price: rawPrice };
     }
 
     const idx = nearestCandleIndex(transformedData.times, time);
     if (idx < 0) return { time, price: rawPrice };
     const candle = transformedData.ohlcRows[idx];
+
+    if (effectiveSnapMode === 'time') {
+      return { time: candle.time, price: rawPrice };
+    }
 
     const prices = [candle.open, candle.high, candle.low, candle.close];
     let snapped = prices[0];

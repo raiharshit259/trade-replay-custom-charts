@@ -5,7 +5,7 @@ import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
 import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import { selectNearestDrawingId } from '@/services/tools/toolEngine';
-import { useChart } from '@/hooks/useChart';
+import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
 import { useTools } from '@/hooks/useTools';
 import { useIsMobile } from '@/hooks/use-mobile';
 import ChartCanvas from '@/components/chart/ChartCanvas';
@@ -48,6 +48,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [chartType, setChartType] = useState<ChartType>('candlestick');
   const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('trend');
   const [magnetMode, setMagnetMode] = useState(false);
+  const [crosshairSnapMode, setCrosshairSnapMode] = useState<CrosshairSnapMode>(() => {
+    if (typeof window === 'undefined') return 'free';
+    const stored = window.localStorage.getItem('chart-crosshair-snap-mode');
+    if (stored === 'time' || stored === 'ohlc' || stored === 'free') return stored;
+    return 'free';
+  });
   const [toolboxMinimized, setToolboxMinimized] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia('(max-width: 767px)').matches;
@@ -62,6 +68,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       return false;
     }
   });
+  const [showGoLive, setShowGoLive] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [treeOpen, setTreeOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -70,6 +77,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
   const dragMoveRef = useRef<{ drawingId: string; startPoint: DrawPoint; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<DrawPoint | null>(null);
   const [touchMode, setTouchMode] = useState<'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch'>('idle');
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
@@ -93,7 +101,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     resetForSymbol,
   } = useTools();
 
-  const { chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange } = useChart(data, visibleCount, chartType);
+  const { chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType);
 
   const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
     const chart = chartRef.current;
@@ -161,6 +169,31 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const idx = Math.max(0, Math.min(visibleCount - 1, data.length - 1));
     return { time: toTimestamp(data[idx].time), price: data[idx].close };
   }, [data, visibleCount]);
+
+  const resolveLegendRow = useCallback((point: DrawPoint | null) => {
+    if (!transformedData.ohlcRows.length) return null;
+    if (!point) return transformedData.ohlcRows[transformedData.ohlcRows.length - 1] ?? null;
+    const idx = nearestCandleIndex(transformedData.times, point.time);
+    if (idx < 0) return transformedData.ohlcRows[transformedData.ohlcRows.length - 1] ?? null;
+    return transformedData.ohlcRows[idx] ?? transformedData.ohlcRows[transformedData.ohlcRows.length - 1] ?? null;
+  }, [transformedData.ohlcRows, transformedData.times]);
+
+  const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
+    const point = pointerToDataPoint(clientX, clientY, crosshairSnapMode, false) ?? fallbackPoint();
+    setHoverPoint(point);
+  }, [crosshairSnapMode, fallbackPoint, pointerToDataPoint, transformedData.times]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('chart-crosshair-snap-mode', crosshairSnapMode);
+    } catch {
+      // Ignore restricted storage environments.
+    }
+  }, [crosshairSnapMode]);
+
+  useEffect(() => {
+    setHoverPoint(null);
+  }, [symbol, transformedData]);
 
   const rafRef = useRef<number | null>(null);
   const renderOverlay = useCallback(() => {
@@ -309,6 +342,45 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [resetForSymbol, symbol]);
 
   useEffect(() => {
+    let pointerStartX: number | null = null;
+
+    const readScrollOffset = () => {
+      const position = chartRef.current?.timeScale().scrollPosition();
+      setShowGoLive((position ?? 0) > 0.1);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      pointerStartX = event.clientX;
+    };
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (pointerStartX != null && Math.abs(event.clientX - pointerStartX) > 28) {
+        setShowGoLive(true);
+      }
+      pointerStartX = null;
+      readScrollOffset();
+    };
+
+    const container = chartContainerRef.current;
+    if (!container) return;
+    readScrollOffset();
+
+    container.addEventListener('wheel', readScrollOffset, { passive: true });
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointerup', onPointerUp);
+    container.addEventListener('pointermove', readScrollOffset, { passive: true });
+    const interval = window.setInterval(readScrollOffset, 300);
+
+    return () => {
+      window.clearInterval(interval);
+      container.removeEventListener('wheel', readScrollOffset);
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointerup', onPointerUp);
+      container.removeEventListener('pointermove', readScrollOffset);
+    };
+  }, [chartContainerRef, chartRef]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDrawingId) {
         const d = drawingsRef.current.find((item) => item.id === selectedDrawingId);
@@ -448,7 +520,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.focus({ preventScroll: true });
-    const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
+    const point = pointerToDataPoint(event.clientX, event.clientY, crosshairSnapMode, magnetMode) || fallbackPoint();
     if (!point) return;
 
     if (toolState.variant === 'none') {
@@ -481,7 +553,9 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
+    updateHoverPoint(event.clientX, event.clientY);
+    
+    const point = pointerToDataPoint(event.clientX, event.clientY, crosshairSnapMode, magnetMode) || fallbackPoint();
     if (!point) return;
 
     if (dragMoveRef.current) {
@@ -537,6 +611,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     renderOverlay();
   };
 
+  const currentLegendRow = resolveLegendRow(hoverPoint);
+  const currentLegendPoint = hoverPoint ?? (currentLegendRow ? { time: currentLegendRow.time, price: currentLegendRow.close } : null);
+  const legendChangePct = currentLegendRow
+    ? currentLegendRow.open !== 0
+      ? ((currentLegendRow.close - currentLegendRow.open) / currentLegendRow.open) * 100
+      : 0
+    : 0;
+  const legendChangeClass = legendChangePct >= 0 ? 'text-emerald-300' : 'text-rose-300';
+
   return (
     <div className="relative flex h-full w-full min-h-[340px] flex-col">
       <div
@@ -545,14 +628,55 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         onTouchMove={onChartTouchMove}
         onTouchEnd={onChartTouchEnd}
         onTouchCancel={onChartTouchEnd}
+        onMouseMove={(event) => updateHoverPoint(event.clientX, event.clientY)}
+        onMouseLeave={() => {
+          setHoverPoint(null);
+          setHoverRowIndex(transformedData.ohlcRows.length ? transformedData.ohlcRows.length - 1 : null);
+        }}
       >
         <div className="chart-wrapper h-full w-full touch-pan-y">
           <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
         </div>
 
-        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
+        <ChartToolbar chartType={chartType} setChartType={setChartType} toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} magnetMode={magnetMode} setMagnetMode={setMagnetMode} crosshairSnapMode={crosshairSnapMode} setCrosshairSnapMode={setCrosshairSnapMode} onUndo={undo} onRedo={redo} onClear={clearDrawings} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen} treeOpen={treeOpen} setTreeOpen={setTreeOpen} toolboxMinimized={toolboxMinimized} setToolboxMinimized={setToolboxMinimized} toolbarCollapsed={toolbarCollapsed} setToolbarCollapsed={setToolbarCollapsed} isMobile={isMobile} />
 
         <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
+
+        <div data-testid="chart-ohlc-legend" className="absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/90 px-3 py-2 backdrop-blur-xl">
+          {currentLegendRow ? (
+            <div className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3">
+              <span className="font-semibold text-foreground">O {currentLegendRow.open.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">H {currentLegendRow.high.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">L {currentLegendRow.low.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">C {currentLegendRow.close.toFixed(2)}</span>
+              <span className={`font-semibold ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+                <span>{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
+                <span>cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
+                <span>snap {crosshairSnapMode}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[11px] text-muted-foreground">No data</div>
+          )}
+        </div>
+
+        {showGoLive ? (
+          <button
+            type="button"
+            data-testid="chart-go-live"
+            onClick={() => {
+              chartRef.current?.timeScale().scrollToRealTime();
+              setShowGoLive(false);
+              renderOverlay();
+            }}
+            className="absolute bottom-4 right-4 z-40 rounded-full border border-primary/55 bg-background/90 px-3 py-1.5 text-[11px] font-semibold text-foreground shadow-lg shadow-primary/10 transition hover:bg-primary/15"
+          >
+            Go to live
+          </button>
+        ) : null}
 
         {selectedDrawing && <div className="absolute right-3 top-3 z-40 rounded-lg border border-primary/25 bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">selected: {selectedDrawing.variant}</div>}
       </div>
