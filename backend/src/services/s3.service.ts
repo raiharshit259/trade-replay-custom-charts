@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import sharp from "sharp";
 import { env } from "../config/env";
 import { isRedisReady, redisClient } from "../config/redis";
+import { clusterScopedKey } from "./redisKey.service";
 
 const PORTFOLIO_PREFIX = "trade-replay/portfolios";
 const LOGO_PREFIX = "trade-replay/logos";
@@ -243,7 +244,7 @@ export async function uploadRemoteLogoToS3(
 ): Promise<{ s3Key: string; cdnUrl: string; variants: Record<string, string> } | null> {
   if (!hasAwsConfig) return null;
 
-  const cachedKey = `logo:s3:${fullSymbol.toUpperCase()}`;
+  const cachedKey = clusterScopedKey("logo:s3", fullSymbol.toUpperCase());
   if (isRedisReady()) {
     try {
       const cached = await redisClient.get(cachedKey);

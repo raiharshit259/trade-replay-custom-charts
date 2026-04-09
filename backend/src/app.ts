@@ -24,18 +24,24 @@ import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
 import { getLogoQueue } from "./services/logoQueue.service";
 import { getChartServiceHealthStatus } from "./services/chartCompute.service";
+import { warmSymbolSearchCache } from "./services/symbol.service";
+import { getMetricsSnapshot } from "./services/metrics.service";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler";
 import { requestLogger } from "./middlewares/requestLogger";
 
 export function createApp() {
   const app = express();
   const httpServer = createServer(app);
+  app.set("trust proxy", 1);
   const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 100,
+    max: Math.max(100, env.API_RATE_LIMIT_MAX),
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === "/health" || req.path.startsWith("/auth/"),
+    skip: (req) => req.path === "/health"
+      || req.path === "/api/health"
+      || req.path.startsWith("/api/auth/")
+      || Boolean(req.headers.authorization),
   });
 
   const allowedOrigins = Array.from(new Set([env.CLIENT_URL, ...env.CLIENT_URLS]));
@@ -89,7 +95,16 @@ export function createApp() {
   app.use(helmet());
   app.use(express.json());
   app.use(requestLogger);
-  app.use("/api", apiLimiter);
+
+  void warmSymbolSearchCache().then(({ warmed, failed }) => {
+    logger.info("symbol_search_precache_complete", { warmed, failed });
+  });
+
+  setInterval(() => {
+    void warmSymbolSearchCache().then(({ warmed, failed }) => {
+      logger.info("symbol_search_precache_refresh", { warmed, failed });
+    });
+  }, 5 * 60 * 1000).unref();
 
   const serverAdapter = new ExpressAdapter();
   serverAdapter.setBasePath("/admin/queues");
@@ -140,6 +155,29 @@ export function createApp() {
       },
     });
   });
+
+  app.get("/api/metrics", async (_req, res) => {
+    const queue = getLogoQueue();
+    const [waiting, active, delayed] = await Promise.all([
+      queue.getWaitingCount(),
+      queue.getActiveCount(),
+      queue.getDelayedCount(),
+    ]);
+
+    res.json({
+      ...getMetricsSnapshot(),
+      queueDepth: {
+        logoEnrichment: {
+          waiting,
+          active,
+          delayed,
+          total: waiting + active + delayed,
+        },
+      },
+    });
+  });
+
+  app.use("/api", apiLimiter);
 
   app.post("/api/upload-url", verifyToken, portfolioController.generateUploadUrl);
 

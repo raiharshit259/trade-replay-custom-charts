@@ -27,7 +27,7 @@ module.exports = {
       script: "tsx",
       args: "src/worker.ts",
       cwd: "/opt/tradereplay/backend",
-      instances: 1,
+      instances: Number(process.env.WORKER_INSTANCES || 1),
       exec_mode: "fork",
       env_file: "/opt/tradereplay/.env",
       env: {
@@ -49,7 +49,7 @@ module.exports = {
       script: "tsx",
       args: "src/index.ts",
       cwd: "/opt/tradereplay/services/logo-service",
-      instances: 1,
+      instances: Number(process.env.LOGO_SERVICE_INSTANCES || 1),
       exec_mode: "fork",
       env_file: "/opt/tradereplay/.env",
       env: {

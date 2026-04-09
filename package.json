@@ -10,7 +10,8 @@
     "bench:charts": "npm --prefix packages/tradereplay-charts run bench",
     "migrate": "npm --prefix backend run migrate",
     "seed": "npm --prefix backend run seed",
-    "validate:symbols": "npm --prefix backend exec tsx scripts/validateSymbols.ts",
+    "validate:symbols": "npm --prefix backend exec tsx ../scripts/validateSymbols.ts",
+    "stress:test": "npm --prefix backend exec tsx ../scripts/stressTest.ts",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"

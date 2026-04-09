@@ -1,4 +1,6 @@
 type SymbolType = "stock" | "crypto" | "forex" | "index";
+import { env } from "../config/env";
+import { resolveStaticIcon } from "../config/staticIconMap";
 
 type ResolveInput = {
   symbol: string;
@@ -6,6 +8,8 @@ type ResolveInput = {
   exchange: string;
   type: SymbolType;
   companyDomain?: string;
+  existingIconUrl?: string;
+  existingS3Icon?: string;
 };
 
 type ResolveOutput = {
@@ -27,6 +31,20 @@ const CRYPTO_ICON_MAP: Record<string, string> = {
 
 function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
+function resolveCdnIcon(input: ResolveInput): string | null {
+  const candidates = [input.existingS3Icon, input.existingIconUrl].filter(Boolean) as string[];
+  if (!candidates.length) return null;
+
+  const cdnBase = env.AWS_CDN_BASE_URL.trim();
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (cdnBase && candidate.startsWith(cdnBase)) return candidate;
+    if (candidate.includes(".amazonaws.com/")) return candidate;
+  }
+
+  return null;
 }
 
 function clearbitUrl(domain: string): string {
@@ -123,6 +141,24 @@ function inferDomainFromName(name: string, exchange: string): string | null {
 }
 
 export async function resolveLogo(input: ResolveInput): Promise<ResolveOutput> {
+  const staticLogo = resolveStaticIcon(input.symbol);
+  if (staticLogo) {
+    return {
+      logoUrl: staticLogo,
+      domain: input.type === "forex" ? "xe.com" : null,
+      source: input.type === "forex" ? "forex-fallback" : "fund-fallback",
+    };
+  }
+
+  const cdnLogo = resolveCdnIcon(input);
+  if (cdnLogo) {
+    return {
+      logoUrl: cdnLogo,
+      domain: input.companyDomain ? normalizeDomain(input.companyDomain) : null,
+      source: "fmp",
+    };
+  }
+
   if (input.type === "forex") {
     return {
       logoUrl: "https://www.google.com/s2/favicons?domain=xe.com&sz=128",

@@ -45,6 +45,7 @@ function readMongoUri(fallback: string): string {
 export const env = {
   NODE_ENV: targetEnv,
   PORT: Number(readProfileVar("PORT", "4000")),
+  API_RATE_LIMIT_MAX: Number(readProfileVar("API_RATE_LIMIT_MAX", "2000")),
   CLIENT_URL: readProfileVar("CLIENT_URL", "http://localhost:8080"),
   CLIENT_URLS: readProfileVar("CLIENT_URLS", "http://localhost:8080,http://localhost:8081")
     .split(",")
@@ -54,6 +55,10 @@ export const env = {
   REDIS_URL: readProfileVar("REDIS_URL", "redis://127.0.0.1:6379"),
   KAFKA_ENABLED: readProfileVar("KAFKA_ENABLED", "false") === "true",
   KAFKA_BROKERS: readProfileVar("KAFKA_BROKERS", "127.0.0.1:9092"),
+  KAFKA_DEFAULT_PARTITIONS: Number(readProfileVar("KAFKA_DEFAULT_PARTITIONS", "3")),
+  KAFKA_SYMBOL_EVENT_PARTITIONS: Number(readProfileVar("KAFKA_SYMBOL_EVENT_PARTITIONS", "6")),
+  KAFKA_PORTFOLIO_EVENT_PARTITIONS: Number(readProfileVar("KAFKA_PORTFOLIO_EVENT_PARTITIONS", "6")),
+  ANALYTICS_CONSUMER_GROUP: readProfileVar("ANALYTICS_CONSUMER_GROUP", "tradereplay-analytics-processor"),
   KAFKA_SASL_MECHANISM: readProfileVar("KAFKA_SASL_MECHANISM", "plain"),
   KAFKA_SASL_USERNAME: readProfileVar("KAFKA_SASL_USERNAME", ""),
   KAFKA_SASL_PASSWORD: readProfileVar("KAFKA_SASL_PASSWORD", ""),

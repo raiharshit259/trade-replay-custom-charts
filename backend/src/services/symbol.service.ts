@@ -2,8 +2,10 @@ import crypto from "node:crypto";
 import { FilterQuery, Types } from "mongoose";
 import { SymbolDocument, SymbolModel } from "../models/Symbol";
 import { env } from "../config/env";
+import { resolveStaticIcon } from "../config/staticIconMap";
 import { getOrSetCachedJsonWithLock } from "./cache.service";
 import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
+import { clusterScopedKey, stableHash } from "./redisKey.service";
 
 type SymbolType = "stock" | "crypto" | "forex" | "index";
 const SUPPORTED_TYPES: SymbolType[] = ["stock", "crypto", "forex", "index"];
@@ -52,6 +54,7 @@ type CursorDecodeResult =
   | { ok: false };
 
 const CACHE_TTL_SECONDS = 60;
+const SEARCH_PRECACHE_QUERIES = ["A", "S", "B", "N", "US", "IN", "BTC", "USD", "EUR", "NASDAQ", "NSE"];
 
 function normalizeQuery(query: string): string {
   return query.trim();
@@ -176,6 +179,7 @@ export async function searchSymbols(params: {
   limit?: number;
   offset?: number;
   cursor?: string;
+  skipLogoEnrichment?: boolean;
 }): Promise<SymbolSearchResult> {
   const query = normalizeQuery(params.query);
   const limit = Math.max(1, Math.min(100, params.limit ?? 50));
@@ -186,7 +190,12 @@ export async function searchSymbols(params: {
   }
   const cursor = await resolveCursorAnchor(decodedCursor.cursor);
 
-  const cacheKey = `app:symbols:search:${query.toLowerCase()}:${params.type ?? "all"}:${params.country ?? "all"}:${limit}:${params.cursor ?? `offset:${offset}`}`;
+  const partition = stableHash(`${query.toLowerCase()}:${params.type ?? "all"}:${params.country ?? "all"}`);
+  const cacheKey = clusterScopedKey(
+    "app:symbols:search",
+    partition,
+    `${query.toLowerCase()}:${params.type ?? "all"}:${params.country ?? "all"}:${limit}:${params.cursor ?? `offset:${offset}`}`,
+  );
 
   const response = await getOrSetCachedJsonWithLock<SymbolSearchResult>(cacheKey, CACHE_TTL_SECONDS, async () => {
     const baseFilter = buildFilter({ query, type: params.type, country: params.country });
@@ -239,7 +248,13 @@ export async function searchSymbols(params: {
     const nextCursor = hasMore && last
       ? encodeCursor({ createdAt: last.createdAt, _id: last._id })
       : null;
-    const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => rest);
+    const paged: SymbolRegistryItem[] = pagedRows.map(({ _id: _unused, createdAt: _createdAt, ...rest }) => {
+      const staticIcon = resolveStaticIcon(rest.symbol);
+      return {
+        ...rest,
+        iconUrl: rest.iconUrl || rest.s3Icon || staticIcon || "",
+      };
+    });
 
     return {
       items: paged,
@@ -251,8 +266,32 @@ export async function searchSymbols(params: {
     };
   });
 
-  enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
+  if (!params.skipLogoEnrichment) {
+    enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
+  }
   return response;
+}
+
+export async function warmSymbolSearchCache(): Promise<{ warmed: number; failed: number }> {
+  let warmed = 0;
+  let failed = 0;
+
+  await Promise.all(
+    SEARCH_PRECACHE_QUERIES.map(async (query) => {
+      try {
+        await searchSymbols({
+          query,
+          limit: 40,
+          skipLogoEnrichment: true,
+        });
+        warmed += 1;
+      } catch {
+        failed += 1;
+      }
+    }),
+  );
+
+  return { warmed, failed };
 }
 
 export async function fetchSymbolFilters(type?: string): Promise<{
@@ -319,7 +358,7 @@ export function toAssetSearchItem(symbol: SymbolRegistryItem) {
         ? "Forex"
         : "Indices";
 
-  const persistedIcon = symbol.iconUrl || symbol.s3Icon || null;
+  const persistedIcon = symbol.iconUrl || symbol.s3Icon || resolveStaticIcon(symbol.symbol) || null;
 
   return {
     ticker: symbol.symbol,

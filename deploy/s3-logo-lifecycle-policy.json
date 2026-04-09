@@ -1,0 +1,30 @@
+{
+  "Rules": [
+    {
+      "ID": "trade-replay-logo-lifecycle",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "trade-replay/logos/"
+      },
+      "Transitions": [
+        {
+          "Days": 30,
+          "StorageClass": "STANDARD_IA"
+        },
+        {
+          "Days": 90,
+          "StorageClass": "GLACIER_IR"
+        }
+      ],
+      "Expiration": {
+        "Days": 365
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 90
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}
