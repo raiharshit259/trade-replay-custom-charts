@@ -2,6 +2,9 @@ import { api } from "@/lib/api";
 import { getStaticFilters } from "@/config/filters";
 import { mapSymbolItemToUi } from "@/utils/symbolMapper";
 
+const reportedMissingLogoSymbols = new Set<string>();
+const iconCache = new Map<string, string>();
+
 export type AssetMarketType = "Stocks" | "Funds" | "Futures" | "Forex" | "Crypto" | "Indices" | "Bonds" | "Economy" | "Options";
 export type AssetCategory = "stocks" | "funds" | "futures" | "forex" | "crypto" | "indices" | "bonds" | "economy" | "options";
 
@@ -36,6 +39,7 @@ export interface AssetSearchResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+  nextCursor?: string | null;
 }
 
 export interface AssetSearchFilterOption {
@@ -57,6 +61,43 @@ export interface AssetSearchFiltersResponse {
   sourceUiType?: "modal" | "dropdown";
 }
 
+function detectFallbackType(item: AssetSearchItem): string | null {
+  const icon = item.iconUrl || item.logoUrl || "";
+  if (!icon) return "none";
+  if (icon === item.exchangeIcon || icon === item.exchangeLogoUrl) return "exchange";
+  if (icon.startsWith("/icons/exchange/")) return "exchange";
+  if (icon.startsWith("/icons/sector/")) return "sector";
+  if (icon.startsWith("/icons/category/")) return "category";
+  return null;
+}
+
+function reportMissingLogo(item: AssetSearchItem): void {
+  const fallbackType = detectFallbackType(item);
+  if (!fallbackType) return;
+
+  const fullSymbol = `${(item.exchange || "GLOBAL").toUpperCase()}:${(item.symbol || item.ticker || "UNKNOWN").toUpperCase()}`;
+  if (reportedMissingLogoSymbols.has(fullSymbol)) return;
+  reportedMissingLogoSymbols.add(fullSymbol);
+
+  void api.post("/symbols/missing-logo", {
+    symbol: (item.symbol || item.ticker || "UNKNOWN").toUpperCase(),
+    fullSymbol,
+    name: item.name || item.symbol || item.ticker || "Unknown Asset",
+    exchange: (item.exchange || "GLOBAL").toUpperCase(),
+    type: (item.type || item.instrumentType || "unknown").toLowerCase(),
+    country: (item.country || item.region || "GLOBAL").toUpperCase(),
+    fallbackType,
+  }).catch(() => {
+    // Telemetry must never block search UX.
+  });
+}
+
+function iconCacheKey(item: AssetSearchItem): string {
+  const exchange = (item.exchange || "GLOBAL").toUpperCase();
+  const symbol = (item.symbol || item.ticker || "UNKNOWN").toUpperCase();
+  return `${exchange}:${symbol}`;
+}
+
 export async function searchAssets(params: {
   q: string;
   market?: string;
@@ -70,10 +111,9 @@ export async function searchAssets(params: {
   economyCategory?: string;
   page?: number;
   limit?: number;
+  cursor?: string;
 }): Promise<AssetSearchResponse> {
-  const limit = params.limit ?? 25;
-  const page = params.page ?? 1;
-  const offset = (Math.max(1, page) - 1) * limit;
+  const limit = params.limit ?? 50;
   const requestedCategory = params.category ?? params.market;
 
   const response = await api.get<AssetSearchResponse>("/simulation/assets", {
@@ -88,9 +128,8 @@ export async function searchAssets(params: {
       exchangeType: params.exchangeType,
       futureCategory: params.futureCategory,
       economyCategory: params.economyCategory,
-      page,
       limit,
-      offset,
+      cursor: params.cursor,
     },
   });
 
@@ -100,7 +139,27 @@ export async function searchAssets(params: {
       if (params.type && params.type !== "all" && item.type !== params.type) return false;
       if (params.sector && params.sector !== "all" && item.sector !== params.sector) return false;
       return true;
+    })
+    .map((item) => {
+      const key = iconCacheKey(item);
+      const icon = item.iconUrl || item.logoUrl || "";
+
+      if (icon) {
+        iconCache.set(key, icon);
+        return item;
+      }
+
+      const cached = iconCache.get(key);
+      if (!cached) return item;
+
+      return {
+        ...item,
+        iconUrl: cached,
+        logoUrl: cached,
+      };
     });
+
+  mappedAssets.forEach(reportMissingLogo);
 
   return {
     ...response.data,

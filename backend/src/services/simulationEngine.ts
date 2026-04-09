@@ -5,8 +5,15 @@ import { logger } from "../utils/logger";
 
 export class SimulationEngine {
   private sessions = new Map<string, SimulationSessionState>();
+  private pendingCandleUpdates = new Map<string, unknown>();
+  private pendingPortfolioUpdates = new Map<string, unknown>();
+  private pendingTradeUpdates = new Map<string, unknown>();
+  private flushTimer: NodeJS.Timeout;
 
-  constructor(private io: Server) {}
+  constructor(private io: Server) {
+    this.flushTimer = setInterval(() => this.flushPendingEvents(), 500);
+    this.flushTimer.unref();
+  }
 
   upsertSession(input: {
     userId: string;
@@ -102,11 +109,11 @@ export class SimulationEngine {
   }
 
   emitPortfolio(userId: string, payload: unknown): void {
-    this.io.to(userId).emit("portfolio:update", payload);
+    this.pendingPortfolioUpdates.set(userId, payload);
   }
 
   emitTrade(userId: string, payload: unknown): void {
-    this.io.to(userId).emit("trade:executed", payload);
+    this.pendingTradeUpdates.set(userId, payload);
   }
 
   private emitCandle(userId: string): void {
@@ -114,7 +121,7 @@ export class SimulationEngine {
     if (!session) return;
 
     const candle = session.candles[session.currentIndex] ?? null;
-    this.io.to(userId).emit("candle:update", {
+    this.pendingCandleUpdates.set(userId, {
       scenarioId: session.scenarioId,
       symbol: session.symbol,
       currentIndex: session.currentIndex,
@@ -123,5 +130,23 @@ export class SimulationEngine {
       isPlaying: session.isPlaying,
       playSpeed: session.playSpeed,
     });
+  }
+
+  private flushPendingEvents(): void {
+    this.pendingCandleUpdates.forEach((payload, userId) => {
+      this.io.to(userId).emit("candle:update", payload);
+    });
+
+    this.pendingPortfolioUpdates.forEach((payload, userId) => {
+      this.io.to(userId).emit("portfolio:update", payload);
+    });
+
+    this.pendingTradeUpdates.forEach((payload, userId) => {
+      this.io.to(userId).emit("trade:executed", payload);
+    });
+
+    this.pendingCandleUpdates.clear();
+    this.pendingPortfolioUpdates.clear();
+    this.pendingTradeUpdates.clear();
   }
 }

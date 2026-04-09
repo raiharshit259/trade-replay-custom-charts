@@ -2,6 +2,7 @@ import { Consumer, EachBatchPayload } from "kafkajs";
 import { kafka, isKafkaEnabled } from "../config/kafka";
 import { KafkaEvent, KafkaTopic } from "./topics";
 import { logger } from "../utils/logger";
+import { acquireIdempotencyLock, toIdempotencyKey } from "../services/idempotency.service";
 
 export type MessageHandler<T = unknown> = (event: KafkaEvent<T>) => Promise<void>;
 
@@ -66,7 +67,13 @@ export async function createConsumer(config: ConsumerConfig): Promise<Consumer |
           const event: KafkaEvent = JSON.parse(message.value.toString());
 
           // Idempotency check
-          if (markProcessed(event.eventId)) {
+          const localDuplicate = markProcessed(event.eventId);
+          const distributedDuplicate = !(await acquireIdempotencyLock(
+            "kafka-event",
+            toIdempotencyKey([event.eventId, batch.topic]),
+          ));
+
+          if (localDuplicate || distributedDuplicate) {
             logger.warn("kafka_duplicate_event", { eventId: event.eventId, topic: batch.topic });
             resolveOffset(message.offset);
             continue;

@@ -113,10 +113,9 @@ export function createSimulationController(service: SimulationService) {
     },
 
     assets: async (req: AuthenticatedRequest, res: Response) => {
-      const page = typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : 1;
-      const limit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 25;
-      const safePage = Number.isFinite(page) && page > 0 ? page : 1;
-      const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 25;
+      const limit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 50;
+      const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 50;
+      const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
 
       const category = typeof req.query.category === "string"
         ? req.query.category
@@ -128,20 +127,29 @@ export function createSimulationController(service: SimulationService) {
         ? req.query.type
         : mapCategoryToSymbolType(category);
 
-      const payload = await searchSymbols({
-        query: typeof req.query.q === "string" ? req.query.q : "",
-        type: queryType,
-        country: typeof req.query.country === "string" ? req.query.country : undefined,
-        limit: safeLimit,
-        offset: (safePage - 1) * safeLimit,
-      });
+      let payload;
+      try {
+        payload = await searchSymbols({
+          query: typeof req.query.q === "string" ? req.query.q : "",
+          type: queryType,
+          country: typeof req.query.country === "string" ? req.query.country : undefined,
+          limit: safeLimit,
+          cursor,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "INVALID_CURSOR_TOKEN") {
+          throw new AppError(400, "INVALID_CURSOR_TOKEN", "Cursor token is invalid");
+        }
+        throw error;
+      }
 
       res.json({
         assets: payload.items.map((item) => toAssetSearchItem(item)),
         total: payload.total,
-        page: safePage,
+        page: 1,
         limit: safeLimit,
         hasMore: payload.hasMore,
+        nextCursor: payload.nextCursor,
       });
     },
 

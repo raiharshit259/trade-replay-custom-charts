@@ -7,7 +7,7 @@ import {
   TradeExecutePayload,
 } from "../topics";
 import { logger } from "../../utils/logger";
-import { redisClient } from "../../config/redis";
+import { isRedisReady, redisClient } from "../../config/redis";
 
 /**
  * Analytics Processor Consumer
@@ -25,10 +25,10 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         action: activity.action,
       });
 
-      if (redisClient.isOpen) {
+      if (isRedisReady()) {
         // Increment daily active users counter
         const dayKey = `analytics:dau:${new Date(timestamp).toISOString().slice(0, 10)}`;
-        await redisClient.pfAdd(dayKey, activity.userId);
+        await redisClient.pfadd(dayKey, activity.userId);
         await redisClient.expire(dayKey, 86400 * 7); // 7 day TTL
 
         // Increment action counter
@@ -46,7 +46,7 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         scenarioId: sim.scenarioId,
       });
 
-      if (redisClient.isOpen) {
+      if (isRedisReady()) {
         // Track simulation starts per scenario
         if (sim.action === "init" && sim.scenarioId) {
           const scenarioKey = `analytics:scenario:${sim.scenarioId}`;
@@ -64,10 +64,10 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         type: trade.type,
       });
 
-      if (redisClient.isOpen) {
+      if (isRedisReady()) {
         // Track most traded symbols
         const symbolKey = "analytics:top_symbols";
-        await redisClient.zIncrBy(symbolKey, 1, trade.symbol);
+        await redisClient.zincrby(symbolKey, 1, trade.symbol);
       }
       break;
     }

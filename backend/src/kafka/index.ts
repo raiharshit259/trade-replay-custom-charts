@@ -7,35 +7,51 @@ import { startPortfolioUpdater } from "./consumers/portfolioUpdater";
 import { startAnalyticsProcessor } from "./consumers/analyticsProcessor";
 import { logger } from "../utils/logger";
 
-export async function bootstrapKafka(): Promise<void> {
+export async function bootstrapKafkaProducerOnly(): Promise<void> {
   if (!isKafkaEnabled()) {
     logger.info("kafka_disabled");
     return;
   }
 
   try {
-    logger.info("kafka_bootstrap_start");
+    logger.info("kafka_producer_bootstrap_start");
 
-    // 1. Ensure topics exist
     await ensureTopics();
-
-    // 2. Connect producer
     await connectProducer();
 
-    // 3. Start consumers
+    setKafkaReady(true);
+    logger.info("kafka_producer_bootstrap_complete");
+  } catch (error) {
+    logger.error("kafka_producer_bootstrap_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    setKafkaReady(false);
+  }
+}
+
+export async function bootstrapKafkaConsumersOnly(): Promise<void> {
+  if (!isKafkaEnabled()) {
+    logger.info("kafka_disabled");
+    return;
+  }
+
+  try {
+    logger.info("kafka_consumers_bootstrap_start");
+    await ensureTopics();
     await startTradeProcessor();
     await startPortfolioUpdater();
     await startAnalyticsProcessor();
-
-    setKafkaReady(true);
-    logger.info("kafka_bootstrap_complete");
+    logger.info("kafka_consumers_bootstrap_complete");
   } catch (error) {
-    logger.error("kafka_bootstrap_failed", {
+    logger.error("kafka_consumers_bootstrap_failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    // Kafka failure is non-fatal — app works without it (graceful degradation)
-    setKafkaReady(false);
   }
+}
+
+export async function bootstrapKafka(): Promise<void> {
+  await bootstrapKafkaProducerOnly();
+  await bootstrapKafkaConsumersOnly();
 }
 
 export async function shutdownKafka(): Promise<void> {

@@ -11,6 +11,10 @@ const symbolSchema = new Schema(
     currency: { type: String, required: true, trim: true, uppercase: true },
     iconUrl: { type: String, trim: true, default: "" },
     companyDomain: { type: String, trim: true, default: "" },
+    logoValidatedAt: { type: Date },
+    logoAttempts: { type: Number, required: true, default: 0 },
+    lastLogoAttemptAt: { type: Number },
+    s3Icon: { type: String, trim: true, default: "" },
     popularity: { type: Number, required: true, default: 0 },
     source: { type: String, required: true, trim: true },
   },
@@ -19,6 +23,9 @@ const symbolSchema = new Schema(
 
 symbolSchema.index({ fullSymbol: 1 }, { unique: true });
 symbolSchema.index({ exchange: 1, type: 1, country: 1 });
+symbolSchema.index({ logoAttempts: 1, lastLogoAttemptAt: 1 });
+symbolSchema.index({ createdAt: -1, _id: -1 });
+symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
 symbolSchema.index({ symbol: "text", name: "text", fullSymbol: "text" });
 
 export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {

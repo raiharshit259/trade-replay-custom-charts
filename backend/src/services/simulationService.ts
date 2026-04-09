@@ -1,7 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { SimulationEngine } from "./simulationEngine";
 import { loadCandlesForSimulation } from "./marketData";
-import { computePortfolioValue, ensurePortfolio, listTrades, setCurrency } from "./portfolioService";
+import { computePortfolioValue, ensurePortfolio, listTrades, setCurrency, writeThroughPortfolioCache } from "./portfolioService";
 import { PortfolioModel } from "../models/Portfolio";
 import { SavedPortfolioModel } from "../models/SavedPortfolio";
 import { SimulationSessionModel } from "../models/SimulationSession";
@@ -9,6 +9,8 @@ import { TradeModel } from "../models/Trade";
 import { CandleData, Currency, Holding } from "../types/shared";
 import { InitPayload, TradeInput } from "../types/service";
 import { cacheSession, getCachedSession } from "./sessionCacheService";
+import { producePortfolioUpdate, produceTradeExecute, produceTradeResult } from "../kafka/eventProducers";
+import { invalidateSymbolCaches } from "./cacheInvalidation.service";
 
 function mapTrades(rows: Awaited<ReturnType<typeof listTrades>>) {
   return rows.map((trade: Awaited<ReturnType<typeof listTrades>>[number]) => ({
@@ -198,6 +200,16 @@ export class SimulationService {
     const price = candle.close;
     const quantity = input.quantity;
     const total = price * quantity;
+
+    produceTradeExecute({
+      userId,
+      symbol: session.symbol,
+      type: input.type,
+      quantity,
+      price,
+      total,
+    });
+
     const holdings = portfolioDoc.holdings as unknown as Holding[];
 
     let realizedPnl = 0;
@@ -265,11 +277,45 @@ export class SimulationService {
     this.engine.emitTrade(userId, tradePayload);
     this.engine.emitPortfolio(userId, portfolio);
 
+    await writeThroughPortfolioCache(userId, {
+      balance: portfolio.balance,
+      holdings: portfolio.holdings,
+      currency: portfolio.currency,
+    });
+    await invalidateSymbolCaches(session.symbol);
+
+    produceTradeResult({
+      userId,
+      tradeId: String(trade._id),
+      symbol: trade.symbol,
+      type: trade.type,
+      quantity: trade.quantity,
+      price: trade.price,
+      total: trade.total,
+      realizedPnl: trade.realizedPnl,
+      success: true,
+    });
+
+    producePortfolioUpdate({
+      userId,
+      balance: portfolio.balance,
+      holdingsCount: portfolio.holdings.length,
+      action: "trade",
+    });
+
     return { trade: tradePayload, portfolio };
   }
 
   async updateCurrency(userId: string, currency: Currency) {
     const updated = (await setCurrency(userId, currency)) as { currency?: Currency } | null;
+    const portfolio = await ensurePortfolio(userId);
+    await writeThroughPortfolioCache(userId, portfolio);
+    producePortfolioUpdate({
+      userId,
+      balance: portfolio.balance,
+      holdingsCount: portfolio.holdings.length,
+      action: "currency_change",
+    });
     return { currency: updated?.currency ?? currency };
   }
 
@@ -294,6 +340,19 @@ export class SimulationService {
       { $set: { holdings } },
       { upsert: true, new: true },
     ).lean()) as { holdings?: Holding[]; balance?: number; currency?: Currency } | null;
+
+    await writeThroughPortfolioCache(userId, {
+      holdings: updated?.holdings ?? [],
+      balance: updated?.balance ?? 100000,
+      currency: updated?.currency ?? "USD",
+    });
+
+    producePortfolioUpdate({
+      userId,
+      balance: updated?.balance ?? 100000,
+      holdingsCount: (updated?.holdings ?? []).length,
+      action: "import",
+    });
 
     return {
       holdings: updated?.holdings ?? [],

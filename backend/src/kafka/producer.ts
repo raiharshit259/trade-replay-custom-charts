@@ -1,7 +1,7 @@
 import { Producer, CompressionTypes } from "kafkajs";
 import crypto from "node:crypto";
 import { kafka, isKafkaEnabled, isKafkaReady } from "../config/kafka";
-import { KafkaEvent, KafkaTopic } from "./topics";
+import { ALL_TOPICS, KafkaEvent, KafkaTopic } from "./topics";
 import { logger } from "../utils/logger";
 
 let producer: Producer | null = null;
@@ -35,6 +35,11 @@ export async function disconnectProducer(): Promise<void> {
 export function produce<T>(topic: KafkaTopic, payload: T, key?: string): void {
   if (!isKafkaEnabled() || !isKafkaReady() || !producer) return;
 
+  if (!ALL_TOPICS.includes(topic)) {
+    logger.warn("kafka_produce_blocked_unknown_topic", { topic });
+    return;
+  }
+
   const event: KafkaEvent<T> = {
     eventId: crypto.randomUUID(),
     topic,
@@ -43,24 +48,32 @@ export function produce<T>(topic: KafkaTopic, payload: T, key?: string): void {
     payload,
   };
 
-  // Fire-and-forget — microtask, not blocking
-  producer
-    .send({
-      topic,
-      compression: CompressionTypes.Snappy,
-      messages: [
-        {
-          key: key ?? event.eventId,
-          value: JSON.stringify(event),
-          headers: { eventId: event.eventId },
-        },
-      ],
-    })
-    .catch((error) => {
-      logger.error("kafka_produce_failed", {
+  try {
+    // Fire-and-forget — microtask, not blocking.
+    producer
+      .send({
         topic,
-        eventId: event.eventId,
-        error: error instanceof Error ? error.message : String(error),
+        compression: CompressionTypes.GZIP,
+        messages: [
+          {
+            key: key ?? event.eventId,
+            value: JSON.stringify(event),
+            headers: { eventId: event.eventId },
+          },
+        ],
+      })
+      .catch((error) => {
+        logger.error("kafka_produce_failed", {
+          topic,
+          eventId: event.eventId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
+  } catch (error) {
+    logger.error("kafka_produce_sync_failed", {
+      topic,
+      eventId: event.eventId,
+      error: error instanceof Error ? error.message : String(error),
     });
+  }
 }

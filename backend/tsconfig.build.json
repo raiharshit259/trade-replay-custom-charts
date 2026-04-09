@@ -5,12 +5,12 @@
     "moduleResolution": "Bundler",
     "target": "ES2022",
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "allowImportingTsExtensions": false,
     "noEmit": false,
     "declaration": false,
     "sourceMap": false
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "utils/**/*.ts"],
   "exclude": ["test/**/*.ts", "dist", "node_modules"]
 }

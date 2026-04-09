@@ -10,10 +10,14 @@ export function connectSocket(token: string): Socket {
 
   const apiUrl = frontendEnv.API_URL;
   const baseUrl = apiUrl.replace(/\/api\/?$/, "");
+  console.log("Connecting to socket...", baseUrl);
   socket = io(baseUrl, {
-    transports: ["websocket"],
+    transports: ["polling", "websocket"],
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
     auth: { token },
   });
+  console.log("Socket state:", socket.connected);
 
   return socket;
 }
