@@ -39,19 +39,19 @@ export default function ObjectTreePanel({
           {drawings.slice().reverse().map((drawing) => {
             const selected = selectedDrawingId === drawing.id;
             return (
-              <div key={drawing.id} className={`rounded-md border px-2 py-1.5 text-[11px] ${selected ? 'border-primary/45 bg-primary/10' : 'border-border/60 bg-background/40'}`}>
+              <div key={drawing.id} data-testid={`drawing-object-${drawing.id}`} className={`rounded-md border px-2 py-1.5 text-[11px] ${selected ? 'border-primary/45 bg-primary/10' : 'border-border/60 bg-background/40'}`}>
                 <div className="flex items-center justify-between gap-1">
-                  <button type="button" onClick={() => onSelect(drawing.id)} className="text-left text-foreground/90 hover:text-foreground" aria-label={`Select ${drawing.variant}`}>
+                  <button type="button" data-testid={`drawing-select-${drawing.id}`} onClick={() => onSelect(drawing.id)} className="text-left text-foreground/90 hover:text-foreground" aria-label={`Select ${drawing.variant}`}>
                     {drawing.variant}
                   </button>
                   <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => onToggleVisible(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground" aria-label={`Toggle visibility for ${drawing.variant}`}>
+                    <button type="button" data-testid={`drawing-visibility-${drawing.id}`} onClick={() => onToggleVisible(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground" aria-label={`Toggle visibility for ${drawing.variant}`}>
                       {drawing.visible === false ? <EyeOff size={12} /> : <Eye size={12} />}
                     </button>
-                    <button type="button" onClick={() => onToggleLocked(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground" aria-label={`Toggle lock for ${drawing.variant}`}>
+                    <button type="button" data-testid={`drawing-lock-${drawing.id}`} onClick={() => onToggleLocked(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-foreground" aria-label={`Toggle lock for ${drawing.variant}`}>
                       {drawing.locked ? <Lock size={12} /> : <LockOpen size={12} />}
                     </button>
-                    <button type="button" onClick={() => onDelete(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive" aria-label={`Delete ${drawing.variant}`}>
+                    <button type="button" data-testid={`drawing-delete-${drawing.id}`} onClick={() => onDelete(drawing.id)} className="rounded p-1 text-muted-foreground hover:bg-destructive/20 hover:text-destructive" aria-label={`Delete ${drawing.variant}`}>
                       <Trash2 size={12} />
                     </button>
                   </div>

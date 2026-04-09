@@ -38,6 +38,16 @@ export {
 
 export { registerIndicator, getIndicator, listIndicators } from './indicators/registry';
 
+export {
+  type TransformOhlc,
+  renkoTransform,
+  rangeBarsTransform,
+  lineBreakTransform,
+  kagiTransform,
+  pointFigureTransform,
+  brickTransform,
+} from './transforms/premium';
+
 // Re-export builtin definitions so consumers can reference them without re-registering.
 export { smaDef }  from './indicators/builtins/sma';
 export { emaDef }  from './indicators/builtins/ema';
@@ -68,3 +78,81 @@ export { chaikinOscDef } from './indicators/builtins/chaikinOsc';
 export { awesomeDef } from './indicators/builtins/awesome';
 export { dpoDef } from './indicators/builtins/dpo';
 export { ichimokuDef } from './indicators/builtins/ichimoku';
+export {
+  hmaDef,
+  demaDef,
+  temaDef,
+  zlemaDef,
+  kamaDef,
+  almaDef,
+  lsmaDef,
+  stochRsiDef,
+  rviDef,
+  ppoDef,
+  pvoDef,
+  tsiDef,
+  dxDef,
+  crsiDef,
+  elderRayDef,
+  cmoDef,
+  fisherDef,
+  kdjDef,
+  bollingerPercentBDef,
+  bollingerBandwidthDef,
+  chaikinVolatilityDef,
+  stddevDef,
+  varianceDef,
+  adlDef,
+  forceIndexDef,
+  eomDef,
+  nviDef,
+  pviDef,
+  vptDef,
+  aroonOscillatorDef,
+  vortexDef,
+} from './indicators/builtins/batch2';
+export {
+  trimaDef,
+  smmaDef,
+  apoDef,
+  smiDef,
+  choppinessDef,
+  ulcerIndexDef,
+  massIndexDef,
+  qstickDef,
+  relativeVolumeDef,
+  balanceOfPowerDef,
+  emvOscDef,
+  volatilityRatioDef,
+  linearRegSlopeDef,
+  linearRegInterceptDef,
+  linearRegAngleDef,
+  priceChannelMidDef,
+  medianPriceDef,
+  typicalPriceDef,
+  weightedCloseDef,
+  volumeOscillatorDef,
+} from './indicators/builtins/batch3';
+export {
+  coppockCurveDef,
+  percentileRankDef,
+  normalizedAtrDef,
+  priceChannelWidthDef,
+  closeLocationValueDef,
+  candleBodyDef,
+  candleBodyPercentDef,
+  upperWickDef,
+  lowerWickDef,
+  trueRangePercentDef,
+  rollingHighDef,
+  rollingLowDef,
+  volumeZScoreDef,
+  volumeSmaRatioDef,
+  rangeSmaRatioDef,
+  cumulativeVolumeDeltaDef,
+  rollingReturnDef,
+  logReturnDef,
+  volatilityEmaDef,
+  breakoutStrengthDef,
+  trendStrengthDef,
+} from './indicators/builtins/batch4';

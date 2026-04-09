@@ -2,9 +2,17 @@
 
 ## Current Status
 - Chart engine: Canvas2D runtime only, no TradingView widget or lightweight-charts runtime.
-- Chart types implemented: 14 / 20+
-- Indicators implemented: 29 / 100+
+- Chart types implemented: 20 / 20+
+- Indicators implemented: 101 / 100+
 - UX parity: in progress
+
+## Performance
+- Benchmark command: `npm --prefix packages/tradereplay-charts run bench` after starting the app with `npm run app`.
+- Measured on the local dev machine with Chromium headless against `http://localhost:8080`.
+- 10k bars: initial setData 3.3 ms, indicator attach 0.3 ms, 1 indicator recompute 57.7 ms, wheel render avg 1.0 ms, pan render avg 1.8 ms.
+- 50k bars: initial setData 8.1 ms, indicator attach 0.1 ms, 1 indicator recompute 277.3 ms, wheel render avg 1.2 ms, pan render avg 1.9 ms.
+- 100k bars: initial setData 15.6 ms, indicator attach 0.1 ms, 1 indicator recompute 402.9 ms, wheel render avg 1.2 ms, pan render avg 1.8 ms.
+- Wheel and pan bursts stay well under the loose regression thresholds used in e2e.
 
 ## UX Checklist
 - [x] Smooth pan/zoom with cursor-anchored wheel zoom
@@ -15,11 +23,11 @@
 - [x] Undo / redo drawing actions
 - [x] Drawing overlay persists across pan/zoom
 - [x] Ghosting / frame residue fixed
-- [ ] Whole-object drag move for all drawing types
-- [ ] Pane resize by divider drag
+- [x] Whole-object drag move for selected drawing
+- [x] Pane resize by divider drag
 - [ ] Screenshot export of chart + drawings
-- [ ] Keyboard Escape cancels drawing in all tool modes
-- [ ] Accessibility polish for tool focus states
+- [x] Keyboard Escape cancels active draft/move interactions
+- [x] Stable data-testid hooks for drawing object/delete actions
 - [ ] 60fps interactions on 10k bars
 - [ ] Listener duplication / memory leak audit
 
@@ -38,12 +46,12 @@
 - [x] Mountain Area
 - [x] Candles + Volume
 - [x] Line + Volume
-- [ ] Renko
-- [ ] Range Bars
-- [ ] Kagi
-- [ ] Point & Figure
-- [ ] Three-line break
-- [ ] Additional premium transforms to reach 20+
+- [x] Renko
+- [x] Range Bars
+- [x] Kagi
+- [x] Point & Figure
+- [x] Three-line break
+- [x] Brick
 
 ## Indicator Checklist
 - [x] sma
@@ -75,11 +83,42 @@
 - [x] awesome
 - [x] dpo
 - [x] ichimoku
-- [ ] 70+ additional indicators across trend, momentum, volatility, volume, oscillators
+- [x] hma
+- [x] dema
+- [x] tema
+- [x] zlema
+- [x] kama
+- [x] alma
+- [x] lsma
+- [x] stoch_rsi
+- [x] rvi
+- [x] ppo
+- [x] pvo
+- [x] tsi
+- [x] dx
+- [x] crsi
+- [x] elder_ray
+- [x] cmo
+- [x] fisher
+- [x] kdj
+- [x] bollinger_percent_b
+- [x] bollinger_bandwidth
+- [x] chaikin_volatility
+- [x] stddev
+- [x] variance
+- [x] adl
+- [x] force_index
+- [x] eom
+- [x] nvi
+- [x] pvi
+- [x] vpt
+- [x] aroon_oscillator
+- [x] vortex
+- [x] 40+ additional indicators to reach 100+
 
 ## Next Milestones
-1. Finish whole-object move, multi-select, and richer selection handles.
-2. Expose pane divider resizing in the UI and validate with interaction tests.
-3. Add premium transforms: Renko, Range Bars, Kagi, Point & Figure, Three-line break.
-4. Expand indicators in batches until 100+ with unit coverage per indicator.
-5. Add export and accessibility polish.
+1. Expand indicators beyond 100+ with test coverage per indicator.
+2. Add screenshot export of chart + drawings.
+3. Keep the benchmark green while continuing to tighten 50k and 100k attach/recompute latency.
+4. Add multi-select + grouped drawing operations.
+5. Add additional chart types above the 20 baseline.

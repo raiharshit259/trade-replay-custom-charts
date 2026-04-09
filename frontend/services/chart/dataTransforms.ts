@@ -1,4 +1,16 @@
-import type { CandlestickData, HistogramData, LineData, UTCTimestamp } from '@tradereplay/charts';
+import {
+  brickTransform,
+  kagiTransform,
+  lineBreakTransform,
+  pointFigureTransform,
+  rangeBarsTransform,
+  renkoTransform,
+  type CandlestickData,
+  type HistogramData,
+  type LineData,
+  type TransformOhlc,
+  type UTCTimestamp,
+} from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 
 export type ChartType =
@@ -15,11 +27,18 @@ export type ChartType =
   | 'rangeArea'
   | 'mountainArea'
   | 'volumeCandles'
-  | 'volumeLine';
+  | 'volumeLine'
+  | 'renko'
+  | 'rangeBars'
+  | 'lineBreak'
+  | 'kagi'
+  | 'pointFigure'
+  | 'brick';
 
 export const chartTypeGroups: Array<{ id: string; label: string; types: ChartType[] }> = [
   { id: 'core', label: 'Core', types: ['candlestick', 'line', 'area', 'baseline', 'histogram', 'bar', 'ohlc'] },
   { id: 'advanced', label: 'Advanced', types: ['heikinAshi', 'hollowCandles', 'stepLine', 'rangeArea', 'mountainArea'] },
+  { id: 'premium', label: 'Premium', types: ['renko', 'rangeBars', 'lineBreak', 'kagi', 'pointFigure', 'brick'] },
   { id: 'volume', label: 'Volume', types: ['volumeCandles', 'volumeLine'] },
 ];
 
@@ -38,6 +57,12 @@ export const chartTypeLabels: Record<ChartType, string> = {
   mountainArea: 'Mountain Area',
   volumeCandles: 'Candles + Volume',
   volumeLine: 'Line + Volume',
+  renko: 'Renko',
+  rangeBars: 'Range Bars',
+  lineBreak: '3-Line Break',
+  kagi: 'Kagi',
+  pointFigure: 'Point & Figure',
+  brick: 'Brick',
 };
 
 export type OhlcRow = {
@@ -51,7 +76,14 @@ export type OhlcRow = {
 
 export type TransformedData = {
   ohlcRows: OhlcRow[];
+  renkoRows: OhlcRow[];
+  rangeBarsRows: OhlcRow[];
+  lineBreakRows: OhlcRow[];
+  kagiRows: OhlcRow[];
+  pointFigureRows: OhlcRow[];
+  brickRows: OhlcRow[];
   closeRows: LineData[];
+  kagiLineRows: LineData[];
   rangeRows: LineData[];
   stepRows: LineData[];
   histogramRows: HistogramData[];
@@ -114,10 +146,25 @@ export function transformChartData(data: CandleData[], visibleCount: number): Tr
 
   const closeRows = ohlcRows.map((row) => ({ time: row.time, value: row.close }));
   const rangeRows = ohlcRows.map((row) => ({ time: row.time, value: (row.high + row.low) / 2 }));
+  const asTransformInput: TransformOhlc[] = ohlcRows.map((row) => ({ ...row }));
+
+  const renkoRows = renkoTransform(asTransformInput) as OhlcRow[];
+  const rangeBarsRows = rangeBarsTransform(asTransformInput) as OhlcRow[];
+  const lineBreakRows = lineBreakTransform(asTransformInput, 3) as OhlcRow[];
+  const kagiRows = kagiTransform(asTransformInput) as OhlcRow[];
+  const pointFigureRows = pointFigureTransform(asTransformInput) as OhlcRow[];
+  const brickRows = brickTransform(asTransformInput) as OhlcRow[];
 
   return {
     ohlcRows,
+    renkoRows,
+    rangeBarsRows,
+    lineBreakRows,
+    kagiRows,
+    pointFigureRows,
+    brickRows,
     closeRows,
+    kagiLineRows: kagiRows.map((row) => ({ time: row.time, value: row.close })),
     rangeRows,
     stepRows: stepLineTransform(closeRows),
     histogramRows: ohlcRows.map((row) => ({

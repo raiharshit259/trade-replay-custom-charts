@@ -191,6 +191,12 @@ const MAIN_PANE_ID: PaneId = 'main';
 /** Minimum pane height weight to prevent zero-height panes. */
 const MIN_PANE_HEIGHT = 0.01;
 
+interface ChartDebugHooks {
+  onRecomputeStart?: (payload: { indicatorCount: number; sourceLength: number }) => void;
+  onRecomputeEnd?: (payload: { indicatorCount: number; sourceLength: number; durationMs: number }) => void;
+  onRenderEnd?: (payload: { durationMs: number; barCount: number; indicatorCount: number }) => void;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function niceStep(range: number, steps: number): number {
@@ -302,6 +308,8 @@ export function createChart(
   const seriesList: SeriesState[] = [];
   const indicatorInstances = new Map<IndicatorInstanceId, IndicatorInstance>();
   let rafId: number | null = null;
+  let indicatorRafId: number | null = null;
+  const debugHooks = (globalThis as typeof globalThis & { __TRADEREPLAY_CHART_DEBUG__?: ChartDebugHooks }).__TRADEREPLAY_CHART_DEBUG__;
 
   // ── canvas setup ──
   const canvas = document.createElement('canvas');
@@ -447,6 +455,9 @@ export function createChart(
    */
   function recomputeIndicators(): void {
     if (indicatorInstances.size === 0) return;
+  const sourceLength = timeIndex.length;
+  const recomputeStart = performance.now();
+  debugHooks?.onRecomputeStart?.({ indicatorCount: indicatorInstances.size, sourceLength });
 
     const src = getSourceOhlcv();
     if (!src) {
@@ -493,6 +504,21 @@ export function createChart(
         ss.store.realign();
       }
     }
+
+    debugHooks?.onRecomputeEnd?.({
+      indicatorCount: indicatorInstances.size,
+      sourceLength,
+      durationMs: performance.now() - recomputeStart,
+    });
+  }
+
+  function scheduleIndicatorRecompute(): void {
+    if (indicatorRafId != null) return;
+    indicatorRafId = requestAnimationFrame(() => {
+      indicatorRafId = null;
+      recomputeIndicators();
+      scheduleRender();
+    });
   }
 
   // ── price scale helpers ──
@@ -1019,6 +1045,7 @@ export function createChart(
   }
 
   function render(): void {
+      const renderStart = performance.now();
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
@@ -1051,6 +1078,12 @@ export function createChart(
     drawAxesBorder(rs);
     drawTimeAxis(rs);
     drawPriceAxis(rs);
+
+    debugHooks?.onRenderEnd?.({
+      durationMs: performance.now() - renderStart,
+      barCount: rs.lastBar >= rs.firstBar ? rs.lastBar - rs.firstBar + 1 : 0,
+      indicatorCount: indicatorInstances.size,
+    });
   }
 
   // ── interaction ──────────────────────────────────────────────────────────
@@ -1181,7 +1214,7 @@ export function createChart(
 
         // Keep indicator outputs in sync with streaming source data.
         if (!sState.indicatorInstanceId) {
-          recomputeIndicators();
+          scheduleIndicatorRecompute();
         }
 
         scheduleRender();
@@ -1384,8 +1417,9 @@ export function createChart(
       };
       indicatorInstances.set(instanceId, instance);
 
-      // Immediately compute with whatever source data is already loaded.
-      recomputeIndicators();
+      // Coalesce indicator setup recomputes so attaching multiple indicators in one tick
+      // does not trigger a full pass for every individual add.
+      scheduleIndicatorRecompute();
       scheduleRender();
 
       return instanceId;

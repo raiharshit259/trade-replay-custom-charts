@@ -17,6 +17,12 @@ export type ChartSeriesKey =
   | 'bar'
   | 'heikinAshi'
   | 'ohlc'
+  | 'renko'
+  | 'rangeBars'
+  | 'lineBreak'
+  | 'kagi'
+  | 'pointFigure'
+  | 'brick'
   | 'volume';
 
 export type ChartSeriesMap = {
@@ -32,6 +38,12 @@ export type ChartSeriesMap = {
   bar: ISeriesApi<'Bar'>;
   heikinAshi: ISeriesApi<'Candlestick'>;
   ohlc: ISeriesApi<'Bar'>;
+  renko: ISeriesApi<'Candlestick'>;
+  rangeBars: ISeriesApi<'Candlestick'>;
+  lineBreak: ISeriesApi<'Candlestick'>;
+  kagi: ISeriesApi<'Line'>;
+  pointFigure: ISeriesApi<'Candlestick'>;
+  brick: ISeriesApi<'Candlestick'>;
   volume: ISeriesApi<'Histogram'>;
 };
 
@@ -48,6 +60,12 @@ export const chartVisibilityMap: Record<ChartType, ChartSeriesKey[]> = {
   stepLine: ['stepLine'],
   rangeArea: ['rangeArea'],
   mountainArea: ['mountainArea'],
+  renko: ['renko'],
+  rangeBars: ['rangeBars'],
+  lineBreak: ['lineBreak'],
+  kagi: ['kagi'],
+  pointFigure: ['pointFigure'],
+  brick: ['brick'],
   volumeCandles: ['candlestick', 'volume'],
   volumeLine: ['line', 'volume'],
 };
@@ -84,6 +102,27 @@ export function createChartSeries(chart: IChartApi): ChartSeriesMap {
       wickUpColor: '#83e8bb', wickDownColor: '#ff8d8f', visible: false,
     }),
     ohlc: chart.addSeries('Bar', { upColor: '#a1f2c8', downColor: '#ff9799', thinBars: true, visible: false }),
+    renko: chart.addSeries('Candlestick', {
+      upColor: '#2ecc71', downColor: '#e74c3c', borderUpColor: '#2ecc71', borderDownColor: '#e74c3c',
+      wickUpColor: '#2ecc71', wickDownColor: '#e74c3c', visible: false,
+    }),
+    rangeBars: chart.addSeries('Candlestick', {
+      upColor: '#48c9b0', downColor: '#ff6b6e', borderUpColor: '#48c9b0', borderDownColor: '#ff6b6e',
+      wickUpColor: '#48c9b0', wickDownColor: '#ff6b6e', visible: false,
+    }),
+    lineBreak: chart.addSeries('Candlestick', {
+      upColor: '#5dade2', downColor: '#ec7063', borderUpColor: '#5dade2', borderDownColor: '#ec7063',
+      wickUpColor: '#5dade2', wickDownColor: '#ec7063', visible: false,
+    }),
+    kagi: chart.addSeries('Line', { color: '#f5b041', lineWidth: 2, visible: false }),
+    pointFigure: chart.addSeries('Candlestick', {
+      upColor: '#7dcea0', downColor: '#f1948a', borderUpColor: '#7dcea0', borderDownColor: '#f1948a',
+      wickUpColor: '#7dcea0', wickDownColor: '#f1948a', visible: false,
+    }),
+    brick: chart.addSeries('Candlestick', {
+      upColor: '#85c1e9', downColor: '#f8c471', borderUpColor: '#85c1e9', borderDownColor: '#f8c471',
+      wickUpColor: '#85c1e9', wickDownColor: '#f8c471', visible: false,
+    }),
     volume: chart.addSeries('Histogram', { priceFormat: { type: 'volume' }, priceScaleId: '', visible: false }),
   };
 
@@ -104,6 +143,12 @@ export function applySeriesData(map: ChartSeriesMap, data: TransformedData): voi
   map.bar.setData(data.ohlcRows);
   map.heikinAshi.setData(data.heikinRows);
   map.ohlc.setData(data.ohlcRows);
+  map.renko.setData(data.renkoRows);
+  map.rangeBars.setData(data.rangeBarsRows);
+  map.lineBreak.setData(data.lineBreakRows);
+  map.kagi.setData(data.kagiLineRows);
+  map.pointFigure.setData(data.pointFigureRows);
+  map.brick.setData(data.brickRows);
   map.volume.setData(data.volumeRows);
 }
 
@@ -144,6 +189,14 @@ export function updateSeriesData(map: ChartSeriesMap, data: TransformedData): vo
   if (lastHeikin) {
     map.heikinAshi.update(lastHeikin);
   }
+
+  // Premium transforms can reflow historical bars, so they are synced in full.
+  map.renko.setData(data.renkoRows);
+  map.rangeBars.setData(data.rangeBarsRows);
+  map.lineBreak.setData(data.lineBreakRows);
+  map.kagi.setData(data.kagiLineRows);
+  map.pointFigure.setData(data.pointFigureRows);
+  map.brick.setData(data.brickRows);
 
   // Step-line data inserts synthetic mid-points and can reorder tail updates.
   // Use full sync for this series to avoid "Cannot update oldest data" runtime errors.

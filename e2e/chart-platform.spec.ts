@@ -47,6 +47,12 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
     "stepLine",
     "rangeArea",
     "mountainArea",
+    "renko",
+    "rangeBars",
+    "lineBreak",
+    "kagi",
+    "pointFigure",
+    "brick",
     "volumeCandles",
     "volumeLine",
   ];
