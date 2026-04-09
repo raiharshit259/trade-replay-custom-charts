@@ -40,7 +40,7 @@ async function getOverlayHash(page: Page): Promise<number> {
 
     const image = ctx.getImageData(0, 0, overlay.width, overlay.height).data;
     let hash = 2166136261;
-    for (let i = 0; i < image.length; i += 4) {
+    for (let i = 0; i < image.length; i += 1) {
       hash ^= image[i];
       hash = Math.imul(hash, 16777619);
     }
@@ -100,6 +100,29 @@ async function drawTrendLine(page: Page): Promise<void> {
   );
 }
 
+async function moveSelectedDrawing(page: Page): Promise<void> {
+  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  if (!box) return;
+
+  const startX = box.x + box.width * 0.54;
+  const startY = box.y + box.height * 0.51;
+  const endX = box.x + box.width * 0.67;
+  const endY = box.y + box.height * 0.41;
+
+  await page.evaluate(
+    ({ startX, startY, endX, endY }) => {
+      const canvas = document.querySelector('canvas[aria-label="chart-drawing-overlay"]:not([style*="display: none"])') as HTMLCanvasElement | null;
+      if (!canvas) return;
+      canvas.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, clientX: startX, clientY: startY }));
+      canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 2, clientX: endX, clientY: endY }));
+      canvas.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, clientX: endX, clientY: endY }));
+    },
+    { startX, startY, endX, endY }
+  );
+}
+
 async function runChartChecks(page: Page, route: "/simulation" | "/live-market"): Promise<void> {
   await page.goto(route);
   await page.waitForTimeout(500);
@@ -141,13 +164,31 @@ async function runChartChecks(page: Page, route: "/simulation" | "/live-market")
   const overlayAfterDraw = await getOverlayHash(page);
   expect(overlayAfterDraw).not.toBe(overlayBeforeDraw);
 
+  await moveSelectedDrawing(page);
+  await page.waitForTimeout(200);
+  const overlayAfterMove = await getOverlayHash(page);
+  expect(overlayAfterMove).not.toBe(overlayAfterDraw);
+
+  await page.getByTestId("chart-undo").first().click();
+  await page.waitForTimeout(150);
+  const overlayAfterUndo = await getOverlayHash(page);
+  expect(overlayAfterUndo).not.toBe(overlayAfterMove);
+
+  await page.getByTestId("chart-redo").first().click();
+  await page.waitForTimeout(150);
+  const overlayAfterRedo = await getOverlayHash(page);
+  expect(overlayAfterRedo).not.toBe(overlayAfterUndo);
+
+  await page.locator('aside [aria-label="Select trend"]:visible').first().click();
+  await expect(page.getByText("selected: trend")).toBeVisible();
+
   await page.mouse.move(cx + 40, cy + 20);
   await page.mouse.wheel(0, -180);
   await page.mouse.wheel(0, 180);
   await page.waitForTimeout(300);
 
   const overlayAfterInteractions = await getOverlayHash(page);
-  expect(overlayAfterInteractions).toBe(overlayAfterDraw);
+  expect(overlayAfterInteractions).toBe(overlayAfterRedo);
 
   page.off("console", onConsole);
   expect(errors).toEqual([]);

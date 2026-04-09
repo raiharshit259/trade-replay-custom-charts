@@ -12,6 +12,6 @@
     }
   },
   "scripts": {
-    "test": "node --experimental-strip-types tests/indicators.test.ts"
+    "test": "node --experimental-strip-types tests/indicators.test.ts && node --experimental-strip-types tests/panes.test.ts"
   }
 }
