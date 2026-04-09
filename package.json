@@ -9,7 +9,7 @@
     "typecheck": "npm --prefix backend run build && npm --prefix frontend run typecheck",
     "migrate": "npm --prefix backend run migrate",
     "seed": "npm --prefix backend run seed",
-    "validate:symbols": "npm --prefix backend exec tsx scripts/validateSymbols.ts",
+    "validate:symbols": "npm --prefix backend exec tsx ../scripts/validateSymbols.ts",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down"
