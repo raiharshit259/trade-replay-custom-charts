@@ -69,6 +69,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   });
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ drawingId: string; anchorIndex: number } | null>(null);
+  const dragMoveRef = useRef<{ drawingId: string; startPoint: DrawPoint; currentPoint: DrawPoint; originalAnchors: DrawPoint[] } | null>(null);
   const [touchMode, setTouchMode] = useState<'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch'>('idle');
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
@@ -83,6 +84,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     startDraft,
     updateDraft,
     finalizeDraft,
+    cancelDraft,
     updateDrawing,
     removeDrawing,
     clearDrawings,
@@ -145,6 +147,15 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     [drawingsRef, selectedDrawingId, toolState.drawings]
   );
 
+  const translateAnchors = useCallback((anchors: DrawPoint[], from: DrawPoint, to: DrawPoint) => {
+    const deltaTime = to.time - from.time;
+    const deltaPrice = to.price - from.price;
+    return anchors.map((anchor) => ({
+      time: (anchor.time + deltaTime) as DrawPoint['time'],
+      price: anchor.price + deltaPrice,
+    }));
+  }, []);
+
   const fallbackPoint = useCallback((): DrawPoint | null => {
     if (!data.length) return null;
     const idx = Math.max(0, Math.min(visibleCount - 1, data.length - 1));
@@ -174,22 +185,28 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         return { x, y };
       };
 
+      const moveState = dragMoveRef.current;
+
       const drawTool = (drawing: Drawing, draft = false) => {
-        if (!drawing.visible || !drawing.options.visible || !drawing.anchors.length) return;
-        const def = getToolDefinition(drawing.variant);
+        const activeDrawing = moveState?.drawingId === drawing.id
+          ? { ...drawing, anchors: translateAnchors(moveState.originalAnchors, moveState.startPoint, moveState.currentPoint) }
+          : drawing;
+
+        if (!activeDrawing.visible || !activeDrawing.options.visible || !activeDrawing.anchors.length) return;
+        const def = getToolDefinition(activeDrawing.variant);
         if (!def) return;
 
-        const points = drawing.anchors.map(toXY).filter(Boolean) as Array<{ x: number; y: number }>;
+        const points = activeDrawing.anchors.map(toXY).filter(Boolean) as Array<{ x: number; y: number }>;
         if (!points.length) return;
 
-        ctx.strokeStyle = `rgba(${rgbFromHex(drawing.options.color)}, ${drawing.options.opacity})`;
-        ctx.fillStyle = `rgba(${rgbFromHex(drawing.options.color)}, 0.12)`;
-        ctx.lineWidth = drawing.options.thickness;
-        ctx.setLineDash(draft ? [6, 4] : drawing.options.style === 'dashed' ? [6, 4] : drawing.options.style === 'dotted' ? [2, 4] : []);
+        ctx.strokeStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, ${activeDrawing.options.opacity})`;
+        ctx.fillStyle = `rgba(${rgbFromHex(activeDrawing.options.color)}, 0.12)`;
+        ctx.lineWidth = activeDrawing.options.thickness;
+        ctx.setLineDash(draft ? [6, 4] : activeDrawing.options.style === 'dashed' ? [6, 4] : activeDrawing.options.style === 'dotted' ? [2, 4] : []);
 
         if (def.family === 'text') {
-          const text = drawing.text || drawing.variant;
-          drawText(ctx, drawing, points[0].x + 4, points[0].y - 4, text);
+          const text = activeDrawing.text || activeDrawing.variant;
+          drawText(ctx, activeDrawing, points[0].x + 4, points[0].y - 4, text);
         } else if (def.family === 'shape') {
           const p1 = points[0];
           const p2 = points[1] || p1;
@@ -225,20 +242,20 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             ctx.moveTo(Math.min(p1.x, p2.x), y);
             ctx.lineTo(Math.max(p1.x, p2.x), y);
             ctx.stroke();
-            if (drawing.options.priceLabel) drawText(ctx, drawing, Math.max(p1.x, p2.x) + 4, y + 2, `${(level * 100).toFixed(1)}%`);
+            if (activeDrawing.options.priceLabel) drawText(ctx, activeDrawing, Math.max(p1.x, p2.x) + 4, y + 2, `${(level * 100).toFixed(1)}%`);
           }
         } else {
           ctx.beginPath();
           ctx.moveTo(points[0].x, points[0].y);
           for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y);
-          if (drawing.options.extendLeft && points.length >= 2) {
+          if (activeDrawing.options.extendLeft && points.length >= 2) {
             const p1 = points[0];
             const p2 = points[1];
             const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
             ctx.moveTo(0, p1.y - m * p1.x);
             ctx.lineTo(p1.x, p1.y);
           }
-          if (drawing.options.extendRight && points.length >= 2) {
+          if (activeDrawing.options.extendRight && points.length >= 2) {
             const p1 = points[points.length - 2];
             const p2 = points[points.length - 1];
             const m = (p2.y - p1.y) / ((p2.x - p1.x) || 1);
@@ -249,7 +266,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           ctx.stroke();
         }
 
-        if (selectedDrawingId === drawing.id) {
+        if (selectedDrawingId === activeDrawing.id) {
           for (const anchor of points) {
             ctx.beginPath();
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -262,7 +279,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       drawingsRef.current.forEach((drawing) => drawTool(drawing));
       if (draftRef.current) drawTool(draftRef.current, true);
     });
-  }, [chartRef, drawingsRef, draftRef, getActiveSeries, overlayRef, selectedDrawingId]);
+  }, [chartRef, drawingsRef, draftRef, getActiveSeries, overlayRef, selectedDrawingId, translateAnchors]);
 
   useEffect(() => {
     renderOverlay();
@@ -327,6 +344,20 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     applyTouchMode('scroll');
     setTouchMode('scroll');
   }, [applyTouchMode, isMobile]);
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (!drawingActiveRef.current && !dragMoveRef.current) return;
+      cancelDraft();
+      dragMoveRef.current = null;
+      setDragAnchor(null);
+      renderOverlay();
+    };
+
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [cancelDraft, drawingActiveRef, renderOverlay]);
 
   useEffect(() => {
     return () => {
@@ -416,6 +447,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.focus({ preventScroll: true });
     const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
     if (!point) return;
 
@@ -426,7 +458,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         const drawing = drawingsRef.current.find((item) => item.id === selected);
         if (drawing && !drawing.locked) {
           const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - point.time) < 86400 && Math.abs(a.price - point.price) < Math.max(0.2, point.price * 0.02));
-          if (idx >= 0) setDragAnchor({ drawingId: selected, anchorIndex: idx });
+          if (idx >= 0) {
+            setDragAnchor({ drawingId: selected, anchorIndex: idx });
+          } else {
+            dragMoveRef.current = { drawingId: selected, startPoint: point, currentPoint: point, originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })) };
+          }
         }
       }
       overlayRef.current?.setPointerCapture(event.pointerId);
@@ -448,6 +484,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const point = pointerToDataPoint(event.clientX, event.clientY, magnetMode) || fallbackPoint();
     if (!point) return;
 
+    if (dragMoveRef.current) {
+      dragMoveRef.current = { ...dragMoveRef.current, currentPoint: point };
+      renderOverlay();
+      return;
+    }
+
     if (dragAnchor) {
       updateDrawing(dragAnchor.drawingId, (drawing) => {
         const next = [...drawing.anchors];
@@ -465,6 +507,20 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId);
+    if (dragMoveRef.current) {
+      const move = dragMoveRef.current;
+      const moved = drawingsRef.current.find((drawing) => drawing.id === move.drawingId);
+      if (moved && !moved.locked) {
+        const translated = translateAnchors(move.originalAnchors, move.startPoint, move.currentPoint);
+        if (translated.some((anchor, index) => anchor.time !== moved.anchors[index]?.time || anchor.price !== moved.anchors[index]?.price)) {
+          updateDrawing(move.drawingId, (drawing) => ({ ...drawing, anchors: translated }));
+        }
+      }
+      dragMoveRef.current = null;
+      renderOverlay();
+      return;
+    }
+
     if (dragAnchor) {
       setDragAnchor(null);
       renderOverlay();

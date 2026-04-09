@@ -28,6 +28,7 @@ export default function ChartCanvas({
       <canvas
         ref={overlayRef}
         aria-label="chart-drawing-overlay"
+        tabIndex={0}
         className={`absolute inset-0 z-10 ${activeVariant === 'none' ? 'pointer-events-none' : 'pointer-events-auto'}`}
         style={{ cursor: toolCursor[activeVariant] }}
         onPointerDown={onPointerDown}

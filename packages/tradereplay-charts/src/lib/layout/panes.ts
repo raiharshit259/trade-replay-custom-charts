@@ -66,3 +66,41 @@ export function computePaneLayout(
 
   return result;
 }
+
+/**
+ * Resize the pane pair adjacent to a divider while preserving the total
+ * available height and the proportions of untouched panes.
+ */
+export function resizePaneHeights(
+  panes: readonly PaneDef[],
+  totalH: number,
+  dividerIndex: number,
+  deltaY: number,
+  minPaneHeight = 48,
+): PaneDef[] {
+  if (panes.length < 2 || dividerIndex < 0 || dividerIndex >= panes.length - 1) {
+    return panes.map((pane) => ({ ...pane }));
+  }
+
+  const layout = computePaneLayout(panes, totalH);
+  const next = layout.map((pane) => ({ ...pane, height: pane.h }));
+  const topPane = next[dividerIndex];
+  const bottomPane = next[dividerIndex + 1];
+
+  const pairTotal = topPane.height + bottomPane.height;
+  const minHeight = Math.max(8, minPaneHeight);
+  const maxTop = Math.max(minHeight, pairTotal - minHeight);
+  const proposedTop = Math.max(minHeight, Math.min(maxTop, topPane.height + deltaY));
+  const proposedBottom = Math.max(minHeight, pairTotal - proposedTop);
+
+  topPane.height = proposedTop;
+  bottomPane.height = proposedBottom;
+
+  const availH = Math.max(0, totalH - (panes.length - 1) * PANE_DIVIDER_H);
+  const total = next.reduce((sum, pane) => sum + pane.height, 0);
+  if (Math.abs(total - availH) > 0.0001) {
+    next[next.length - 1].height += availH - total;
+  }
+
+  return next.map((pane) => ({ id: pane.id, height: Math.max(0.01, pane.height) }));
+}

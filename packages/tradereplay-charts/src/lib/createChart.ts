@@ -2,7 +2,7 @@
 
 import { TimeIndex } from './data/timeIndex';
 import { SeriesStore, type TimedRow } from './data/seriesStore';
-import { type PaneId, type PaneDef, PANE_DIVIDER_H, computePaneLayout } from './layout/panes';
+import { type PaneId, type PaneDef, PANE_DIVIDER_H, computePaneLayout, resizePaneHeights } from './layout/panes';
 import { priceToY, yToPrice, sepPriceToY, sepYToPrice } from './scales/priceScale';
 import { getIndicator } from '../indicators/registry';
 import { registerBuiltins } from '../indicators/builtins/index';
@@ -1059,6 +1059,7 @@ export function createChart(
   let wheelAccumDelta = 0;
   let wheelAnchorX: number | null = null;
   let wheelRafId: number | null = null;
+  let paneResizeDrag: { dividerIndex: number; startY: number; startPanes: PaneDef[] } | null = null;
 
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
@@ -1091,11 +1092,30 @@ export function createChart(
   }
 
   function onPointerDown(e: PointerEvent): void {
+    const rs = computeRenderState();
+    for (let i = 0; i < rs.paneStates.length - 1; i += 1) {
+      const dividerTop = rs.paneStates[i].top + rs.paneStates[i].h;
+      if (e.offsetY >= dividerTop && e.offsetY <= dividerTop + PANE_DIVIDER_H) {
+        paneResizeDrag = { dividerIndex: i, startY: e.offsetY, startPanes: panes.map((pane) => ({ ...pane })) };
+        canvas.setPointerCapture(e.pointerId);
+        scheduleRender();
+        return;
+      }
+    }
+
     dragStart = { clientX: e.clientX, rightAtStart: rightmostIndex };
     canvas.setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: PointerEvent): void {
+    if (paneResizeDrag != null) {
+      const deltaY = e.offsetY - paneResizeDrag.startY;
+      const resized = resizePaneHeights(paneResizeDrag.startPanes, ch(), paneResizeDrag.dividerIndex, deltaY, 48);
+      panes.splice(0, panes.length, ...resized);
+      scheduleRender();
+      return;
+    }
+
     crosshairX = e.offsetX;
     crosshairY = e.offsetY;
     if (dragStart != null && (mode === 'pan' || mode === 'scroll' || mode === 'idle')) {
@@ -1108,6 +1128,7 @@ export function createChart(
   function onPointerUp(e: PointerEvent): void {
     if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
     dragStart = null;
+    paneResizeDrag = null;
   }
 
   function onPointerLeave(): void {
@@ -1429,6 +1450,7 @@ export function createChart(
     remove(): void {
       if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
       if (wheelRafId != null) { cancelAnimationFrame(wheelRafId); wheelRafId = null; }
+      paneResizeDrag = null;
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
