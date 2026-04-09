@@ -1,6 +1,19 @@
 import { kafka, isKafkaEnabled, isKafkaReady } from "../config/kafka";
 import { ALL_TOPICS } from "./topics";
 import { logger } from "../utils/logger";
+import { env } from "../config/env";
+
+function partitionsForTopic(topic: string): number {
+  if (topic === "symbol.logo.enriched") {
+    return Math.max(1, env.KAFKA_SYMBOL_EVENT_PARTITIONS);
+  }
+
+  if (topic === "portfolio.update") {
+    return Math.max(1, env.KAFKA_PORTFOLIO_EVENT_PARTITIONS);
+  }
+
+  return Math.max(1, env.KAFKA_DEFAULT_PARTITIONS);
+}
 
 export async function ensureTopics(): Promise<void> {
   if (!isKafkaEnabled()) return;
@@ -15,7 +28,7 @@ export async function ensureTopics(): Promise<void> {
       await admin.createTopics({
         topics: missing.map((topic) => ({
           topic,
-          numPartitions: 1,
+          numPartitions: partitionsForTopic(topic),
           replicationFactor: 1,
         })),
       });

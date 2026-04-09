@@ -38,6 +38,7 @@ export const env = {
   REDIS_URL: readProfileVar(targetEnv, "REDIS_URL", "redis://127.0.0.1:6379"),
   KAFKA_ENABLED: readProfileVar(targetEnv, "KAFKA_ENABLED", "false") === "true",
   KAFKA_BROKERS: readProfileVar(targetEnv, "KAFKA_BROKERS", "127.0.0.1:9092"),
+  LOGO_WORKER_CONCURRENCY: Number(readProfileVar(targetEnv, "LOGO_WORKER_CONCURRENCY", "20")),
   AWS_REGION: process.env.AWS_REGION ?? "",
   AWS_S3_BUCKET: process.env.AWS_S3_BUCKET ?? "",
   AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "",

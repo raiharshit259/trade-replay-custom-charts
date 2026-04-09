@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { logger, runWithLogContext } from "../utils/logger";
+import { recordApiLatency } from "../services/metrics.service";
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   const startedAt = Date.now();
@@ -12,6 +13,9 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   res.setHeader("x-request-id", requestId);
 
   res.on("finish", () => {
+    const durationMs = Date.now() - startedAt;
+    recordApiLatency(`${req.method} ${req.path}`, durationMs);
+
     const isError = res.statusCode >= 400;
     const shouldSample = Math.random() < env.LOG_REQUEST_SAMPLE_RATE;
     if (!isError && !shouldSample) {
@@ -23,7 +27,7 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
       method: req.method,
       path: req.originalUrl,
       statusCode: res.statusCode,
-      durationMs: Date.now() - startedAt,
+      durationMs,
     });
   });
 

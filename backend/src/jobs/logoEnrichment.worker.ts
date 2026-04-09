@@ -12,6 +12,8 @@ import { getFailureStatsSnapshot, resetDiagnosticsWindow, FailureReason } from "
 import { processWithWorkerPool } from "../services/workerManager.service";
 import { inferDomainWithConfidence } from "../services/domainConfidence.service";
 import { classifySymbol } from "../services/symbolClassifier.service";
+import { isRedisReady, redisClient } from "../config/redis";
+import { clusterScopedKey } from "../services/redisKey.service";
 
 const BASE_PER_WORKER_BATCH_SIZE = 300;
 const BASE_MAX_WORKERS = 4;
@@ -32,6 +34,8 @@ let minConfidenceThreshold = 0.5;
 const POPULARITY_FORCE_ATTEMPT_THRESHOLD = 120;
 let lastFallbackRatio: number | null = null;
 let lowProgressStreak = 0;
+const PASS_LOCK_TTL_SECONDS = 120;
+const PASS_LOCK_KEY = clusterScopedKey("app:lock:logo-pass", "global");
 
 interface CycleTuning {
   perWorkerBatchSize: number;
@@ -169,6 +173,15 @@ function sleep(ms: number): Promise<void> {
 }
 
 export async function runLogoEnrichmentPass(): Promise<{ processed: number; resolved: number; ratio: number }> {
+  if (isRedisReady()) {
+    const locked = await redisClient.set(PASS_LOCK_KEY, "1", "EX", PASS_LOCK_TTL_SECONDS, "NX");
+    if (locked !== "OK") {
+      logger.info("logo_worker_pass_skipped_distributed_lock");
+      const ratioState = await computeFallbackRatio();
+      return { processed: 0, resolved: 0, ratio: ratioState.ratio };
+    }
+  }
+
   workerPassInFlight = true;
 
   try {
@@ -278,6 +291,9 @@ export async function runLogoEnrichmentPass(): Promise<{ processed: number; reso
     return { processed, resolved, ratio: finalRatioState.ratio };
   } finally {
     workerPassInFlight = false;
+    if (isRedisReady()) {
+      await redisClient.del(PASS_LOCK_KEY);
+    }
   }
 }
 

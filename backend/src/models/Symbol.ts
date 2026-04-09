@@ -26,7 +26,21 @@ symbolSchema.index({ exchange: 1, type: 1, country: 1 });
 symbolSchema.index({ logoAttempts: 1, lastLogoAttemptAt: 1 });
 symbolSchema.index({ createdAt: -1, _id: -1 });
 symbolSchema.index({ type: 1, country: 1, createdAt: -1, _id: -1 });
-symbolSchema.index({ symbol: "text", name: "text", fullSymbol: "text" });
+symbolSchema.index({ symbol: 1, type: 1, country: 1, createdAt: -1 });
+symbolSchema.index(
+  { popularity: -1, createdAt: -1 },
+  {
+    partialFilterExpression: { popularity: { $gt: 0 } },
+    name: "symbol_popularity_active_idx",
+  },
+);
+symbolSchema.index(
+  { symbol: "text", name: "text", fullSymbol: "text" },
+  {
+    weights: { symbol: 12, fullSymbol: 8, name: 4 },
+    name: "symbol_search_text_idx",
+  },
+);
 
 export type SymbolDocument = InferSchemaType<typeof symbolSchema> & {
   _id: mongoose.Types.ObjectId;

@@ -8,6 +8,9 @@ import {
 } from "../topics";
 import { logger } from "../../utils/logger";
 import { isRedisReady, redisClient } from "../../config/redis";
+import { env } from "../../config/env";
+
+const ANALYTICS_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * Analytics Processor Consumer
@@ -34,6 +37,7 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         // Increment action counter
         const actionKey = `analytics:actions:${activity.action}`;
         await redisClient.incr(actionKey);
+        await redisClient.expire(actionKey, ANALYTICS_TTL_SECONDS);
       }
       break;
     }
@@ -51,6 +55,7 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         if (sim.action === "init" && sim.scenarioId) {
           const scenarioKey = `analytics:scenario:${sim.scenarioId}`;
           await redisClient.incr(scenarioKey);
+          await redisClient.expire(scenarioKey, ANALYTICS_TTL_SECONDS);
         }
       }
       break;
@@ -68,6 +73,7 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
         // Track most traded symbols
         const symbolKey = "analytics:top_symbols";
         await redisClient.zincrby(symbolKey, 1, trade.symbol);
+        await redisClient.expire(symbolKey, ANALYTICS_TTL_SECONDS);
       }
       break;
     }
@@ -79,7 +85,7 @@ const handleAnalytics: MessageHandler = async (event: KafkaEvent) => {
 
 export async function startAnalyticsProcessor(): Promise<void> {
   await createConsumer({
-    groupId: "tradereplay-analytics-processor",
+    groupId: env.ANALYTICS_CONSUMER_GROUP,
     topics: [
       KAFKA_TOPICS.USER_ACTIVITY,
       KAFKA_TOPICS.SIMULATION_EVENTS,

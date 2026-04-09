@@ -1,5 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import { redisConnectionOptions, redisClient, isRedisReady } from "../config/redis";
+import { env } from "../config/env";
 import { SymbolModel } from "../models/Symbol";
 import { resolveLogo } from "./logoResolver.service";
 import { uploadRemoteLogoToS3 } from "./s3.service";
@@ -14,6 +15,7 @@ type QueueSymbol = {
   iconUrl?: string;
   s3Icon?: string;
   companyDomain?: string;
+  createdAt: number;
 };
 
 const LOGO_QUEUE_NAME = "logo-enrichment";
@@ -21,12 +23,14 @@ const LOGO_QUEUE_JOB = "symbol-logo-enrichment";
 const SUMMARY_LOG_INTERVAL_MS = 30000;
 const MAX_ATTEMPTS = 3;
 const ATTEMPT_COOLDOWN_MS = 60 * 60 * 1000;
-const WORKER_CONCURRENCY = 20;
+const WORKER_CONCURRENCY = Math.max(1, env.LOGO_WORKER_CONCURRENCY || 20);
 
 let processed = 0;
 let resolved = 0;
 let failed = 0;
 let skipped = 0;
+let totalQueueLatencyMs = 0;
+let maxQueueLatencyMs = 0;
 
 type ClaimedSymbol = {
   symbol: string;
@@ -35,6 +39,8 @@ type ClaimedSymbol = {
   exchange: string;
   type: "stock" | "crypto" | "forex" | "index";
   companyDomain?: string;
+  iconUrl?: string;
+  s3Icon?: string;
 };
 
 async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
@@ -72,6 +78,8 @@ async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
         exchange: 1,
         type: 1,
         companyDomain: 1,
+        iconUrl: 1,
+        s3Icon: 1,
       },
       lean: true,
     },
@@ -81,6 +89,10 @@ async function claimAttempt(fullSymbol: string): Promise<ClaimedSymbol | null> {
 }
 
 async function processJob(payload: QueueSymbol): Promise<void> {
+  const queueLatencyMs = Math.max(0, Date.now() - payload.createdAt);
+  totalQueueLatencyMs += queueLatencyMs;
+  maxQueueLatencyMs = Math.max(maxQueueLatencyMs, queueLatencyMs);
+
   if (!isRedisReady()) {
     throw new Error("REDIS_NOT_READY");
   }
@@ -109,6 +121,8 @@ async function processJob(payload: QueueSymbol): Promise<void> {
     exchange: claimed.exchange,
     type: claimed.type,
     companyDomain: claimed.companyDomain,
+    existingIconUrl: claimed.iconUrl,
+    existingS3Icon: claimed.s3Icon,
   });
 
   if (!resolvedLogo.logoUrl) {
@@ -193,6 +207,8 @@ export function startLogoWorker(): Worker<QueueSymbol> {
       message: "logo_service_queue_metrics",
       queueSize: waiting + delayed,
       activeJobs: active,
+      avgQueueLatencyMs: processed > 0 ? Math.round(totalQueueLatencyMs / processed) : 0,
+      maxQueueLatencyMs,
       processed,
       resolved,
       failed,

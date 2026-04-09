@@ -1,6 +1,7 @@
 import type { AssetSearchItem } from "@/lib/assetSearch";
 import { CRYPTO_ICON_ID_MAP } from "@/config/iconMap";
 import { DOMAIN_MAP } from "@/config/domainMap";
+import { STATIC_ICON_MAP } from "@/config/staticIconMap";
 
 function coinGeckoIconUrl(id: string): string {
   return `https://assets.coingecko.com/coins/images/${id}/small.png`;
@@ -8,6 +9,11 @@ function coinGeckoIconUrl(id: string): string {
 
 function symbolKey(item: AssetSearchItem): string {
   return (item.symbol || item.ticker || "").toUpperCase();
+}
+
+function resolveStaticIcon(item: AssetSearchItem): string | undefined {
+  const symbol = symbolKey(item);
+  return STATIC_ICON_MAP[symbol];
 }
 
 function exchangeIconPath(exchange: string): string {
@@ -54,7 +60,8 @@ export function resolveAssetIcons(item: AssetSearchItem): Pick<AssetSearchItem, 
   const isCrypto = type === "crypto" || item.category === "crypto";
   const isStockLike = item.category === "stocks" || item.category === "funds" || item.category === "bonds";
 
-  const iconUrl = item.iconUrl
+  const iconUrl = resolveStaticIcon(item)
+    || item.iconUrl
     || item.logoUrl
     || (isCrypto ? resolveCryptoIcon(item) : undefined)
     || (isStockLike ? resolveStockIcon(item) : undefined)

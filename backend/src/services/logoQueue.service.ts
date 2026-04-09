@@ -2,6 +2,7 @@ import { Queue } from "bullmq";
 import { isRedisReady, redisClient } from "../config/redis";
 import { redisConnectionOptions } from "../config/redis";
 import { logger } from "../utils/logger";
+import { clusterScopedKey } from "./redisKey.service";
 
 type QueueSymbol = {
   symbol: string;
@@ -24,7 +25,7 @@ const LOGO_QUEUE_JOB = "symbol-logo-enrichment";
 const MAX_QUEUE_SIZE = 2000;
 const BACKPRESSURE_QUEUE_THRESHOLD = 1000;
 const MAX_ENQUEUE_PER_MINUTE = 500;
-const ENQUEUE_DEDUPE_TTL_SECONDS = 20 * 60;
+const ENQUEUE_DEDUPE_TTL_SECONDS = 10 * 60;
 
 let queue: Queue<QueueSymbol> | null = null;
 let currentEnqueueMinute = 0;
@@ -36,7 +37,7 @@ async function shouldEnqueueByDedupeWindow(fullSymbol: string): Promise<boolean>
   if (!isRedisReady()) return true;
 
   try {
-    const dedupeKey = `app:dedupe:logo:${fullSymbol}`;
+    const dedupeKey = clusterScopedKey("app:dedupe:logo", fullSymbol);
     const result = await redisClient.set(dedupeKey, "1", "EX", ENQUEUE_DEDUPE_TTL_SECONDS, "NX");
     return result === "OK";
   } catch {

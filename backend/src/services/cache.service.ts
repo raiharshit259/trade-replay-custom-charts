@@ -1,5 +1,6 @@
 import { isRedisReady, redisClient } from "../config/redis";
 import { LRUCache } from "lru-cache";
+import { recordCacheResult } from "./metrics.service";
 
 const l1Cache = new LRUCache<string, string>({
   max: 5000,
@@ -84,11 +85,17 @@ async function readCacheEntry<T>(key: string): Promise<CacheRead<T> | null> {
   const memoryHit = l1Cache.get(key);
   if (memoryHit) {
     const parsed = parseEnvelope<T>(memoryHit);
-    if (parsed) return parsed;
+    if (parsed) {
+      recordCacheResult("symbol-search", true);
+      return parsed;
+    }
     l1Cache.delete(key);
   }
 
-  if (!isRedisReady()) return null;
+  if (!isRedisReady()) {
+    recordCacheResult("symbol-search", false);
+    return null;
+  }
   let raw: string | null = null;
   try {
     raw = await redisClient.get(key);
@@ -98,6 +105,7 @@ async function readCacheEntry<T>(key: string): Promise<CacheRead<T> | null> {
   if (!raw) return null;
 
   l1Cache.set(key, raw);
+  recordCacheResult("symbol-search", true);
   return parseEnvelope<T>(raw);
 }
 
@@ -176,6 +184,7 @@ export async function getOrSetCachedJsonWithLock<T>(
   }
 
   const fallbackData = await fetchFromDb();
+  recordCacheResult("symbol-search", false);
   await setCachedJson(key, fallbackData, ttlSeconds);
   return fallbackData;
 }
