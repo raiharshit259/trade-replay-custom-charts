@@ -29,11 +29,28 @@ function readProfileVar(key: string, fallback: string): string {
     ?? fallback;
 }
 
+function readMongoUri(fallback: string): string {
+  return process.env[`${envPrefix}_MONGODB_URI`]
+    ?? process.env[`LOCAL_MONGODB_URI`]
+    ?? process.env.MONGODB_URI
+    ?? process.env[`${envPrefix}_MONGO_URL`]
+    ?? process.env[`LOCAL_MONGO_URL`]
+    ?? process.env.MONGO_URL
+    ?? process.env[`${envPrefix}_MONGO_URI`]
+    ?? process.env[`LOCAL_MONGO_URI`]
+    ?? process.env.MONGO_URI
+    ?? fallback;
+}
+
 export const env = {
   NODE_ENV: targetEnv,
   PORT: Number(readProfileVar("PORT", "4000")),
   CLIENT_URL: readProfileVar("CLIENT_URL", "http://localhost:8080"),
-  MONGO_URI: readProfileVar("MONGO_URI", "mongodb://127.0.0.1:27017/tradereplay"),
+  CLIENT_URLS: readProfileVar("CLIENT_URLS", "http://localhost:8080,http://localhost:8081")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+  MONGO_URI: readMongoUri("mongodb://127.0.0.1:27017/tradereplay"),
   REDIS_URL: readProfileVar("REDIS_URL", "redis://127.0.0.1:6379"),
   KAFKA_ENABLED: readProfileVar("KAFKA_ENABLED", "false") === "true",
   KAFKA_BROKERS: readProfileVar("KAFKA_BROKERS", "127.0.0.1:9092"),

@@ -21,9 +21,22 @@ export function createApp() {
   const app = express();
   const httpServer = createServer(app);
 
+  const allowedOrigins = Array.from(new Set([env.CLIENT_URL, ...env.CLIENT_URLS]));
+  const corsOrigin: cors.CorsOptions["origin"] = (origin, callback) => {
+    const isLocalhostOrigin =
+      typeof origin === "string" && /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
+
+    // Allow non-browser requests (curl, server-to-server) and known browser origins.
+    if (!origin || isLocalhostOrigin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Not allowed by CORS"));
+  };
+
   const io = new Server(httpServer, {
     cors: {
-      origin: env.CLIENT_URL,
+      origin: corsOrigin,
       credentials: true,
     },
   });
@@ -51,7 +64,7 @@ export function createApp() {
     socket.join(socket.data.userId);
   });
 
-  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+  app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(express.json());
   app.use(requestLogger);
 

@@ -32,6 +32,14 @@ async function resolvePort(preferredPort: number): Promise<number> {
 
 async function bootstrap() {
   logger.info("bootstrap_start");
+  logger.info("env_profile", {
+    nodeEnv: env.NODE_ENV,
+    port: env.PORT,
+    clientUrls: env.CLIENT_URLS,
+    mongoUri: env.MONGO_URI,
+    redisUrl: env.REDIS_URL,
+    kafkaEnabled: env.KAFKA_ENABLED,
+  });
   logger.info("bootstrap_connect_mongodb");
   await connectDB();
   logger.info("bootstrap_connect_redis");

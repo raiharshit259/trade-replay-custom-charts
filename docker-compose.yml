@@ -26,10 +26,11 @@ services:
     env_file:
       - ./.env
     environment:
+      NODE_ENV: development
       PORT: 4000
       CLIENT_URL: http://localhost:8080
-      MONGO_URI: mongodb://mongodb:27017/tradereplay
-      REDIS_URL: redis://redis:6379
+      DEV_MONGO_URI: mongodb://mongodb:27017/tradereplay
+      DEV_REDIS_URL: redis://redis:6379
       JWT_SECRET: docker-dev-secret
       USD_TO_INR: 83.5
     ports:
