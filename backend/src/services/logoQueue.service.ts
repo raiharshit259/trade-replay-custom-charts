@@ -87,6 +87,10 @@ function priorityOf(symbol: QueueSymbol): number {
   return Math.floor(basePriority + ageBoost * 0.0001);
 }
 
+function safeJobId(fullSymbol: string): string {
+  return fullSymbol.replace(/[^a-zA-Z0-9._-]/g, "-");
+}
+
 async function enqueueSymbolLogoEnrichmentInternal(symbol: QueueSymbolInput): Promise<void> {
   if (hasExistingIcon(symbol)) return;
 
@@ -137,7 +141,7 @@ async function enqueueSymbolLogoEnrichmentInternal(symbol: QueueSymbolInput): Pr
   }
 
   await logoQueue.add(LOGO_QUEUE_JOB, normalized, {
-    jobId: normalized.fullSymbol,
+    jobId: safeJobId(normalized.fullSymbol),
     priority: priorityOf(normalized),
   });
 }
