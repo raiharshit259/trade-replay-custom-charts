@@ -58,8 +58,8 @@ pipeline {
 
     stage('Post-Deploy Validation') {
       steps {
-        sh 'npm run validate'
-        sh 'npm run validate:logo-pipeline'
+        sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate'
+        sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate:logo-pipeline'
       }
     }
   }
@@ -73,6 +73,7 @@ pipeline {
     }
   }
 }
+
 
 
 
