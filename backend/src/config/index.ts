@@ -59,6 +59,17 @@ const EnvSchema = z.object({
   LOGO_ENRICHMENT_ENABLED: z.enum(["true", "false"]),
   LOGO_ENRICHMENT_INTERVAL_MS: z.string().min(1),
   LOGO_FALLBACK_TARGET_RATIO: z.string().min(1),
+  CLIENT_URLS: z.string().optional(),
+  CHART_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
+  CHART_SERVICE_URL: z.string().optional(),
+  CHART_SERVICE_AUTH_ENABLED: z.enum(["true", "false"]).optional(),
+  CHART_SERVICE_AUTH_TOKEN: z.string().optional(),
+  CHART_SERVICE_TIMEOUT_MS: z.string().optional(),
+  CHART_SERVICE_RETRY_COUNT: z.string().optional(),
+  CHART_SERVICE_RETRY_BASE_MS: z.string().optional(),
+  CHART_SERVICE_BREAKER_FAILURE_THRESHOLD: z.string().optional(),
+  CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: z.string().optional(),
+  CHART_SERVICE_BREAKER_COOLDOWN_MS: z.string().optional(),
   USD_TO_INR: z.string().min(1),
 });
 
@@ -184,5 +195,19 @@ export const CONFIG = {
   logoEnrichmentEnabled: booleanEnv("LOGO_ENRICHMENT_ENABLED"),
   logoEnrichmentIntervalMs: numberEnv("LOGO_ENRICHMENT_INTERVAL_MS"),
   logoFallbackTargetRatio: numberEnv("LOGO_FALLBACK_TARGET_RATIO"),
+  clientUrls: (() => {
+    const raw = optionalEnv("CLIENT_URLS");
+    return raw ? raw.split(",").map(origin => origin.trim()).filter(Boolean) : [requiredEnv("CLIENT_URL")];
+  })(),
+  chartServiceEnabled: optionalEnv("CHART_SERVICE_ENABLED") === "true",
+  chartServiceUrl: optionalEnv("CHART_SERVICE_URL") || "http://127.0.0.1:4010",
+  chartServiceAuthEnabled: optionalEnv("CHART_SERVICE_AUTH_ENABLED") === "true",
+  chartServiceAuthToken: optionalEnv("CHART_SERVICE_AUTH_TOKEN"),
+  chartServiceTimeoutMs: optionalEnv("CHART_SERVICE_TIMEOUT_MS") ? Number(optionalEnv("CHART_SERVICE_TIMEOUT_MS")) : 1500,
+  chartServiceRetryCount: optionalEnv("CHART_SERVICE_RETRY_COUNT") ? Math.max(0, Number(optionalEnv("CHART_SERVICE_RETRY_COUNT"))) : 1,
+  chartServiceRetryBaseMs: optionalEnv("CHART_SERVICE_RETRY_BASE_MS") ? Math.max(10, Number(optionalEnv("CHART_SERVICE_RETRY_BASE_MS"))) : 150,
+  chartServiceBreakerFailureThreshold: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD") ? Math.max(1, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_THRESHOLD"))) : 5,
+  chartServiceBreakerFailureWindowMs: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS"))) : 30000,
+  chartServiceBreakerCooldownMs: optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS"))) : 30000,
   usdToInr: numberEnv("USD_TO_INR"),
 };
