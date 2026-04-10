@@ -3,6 +3,7 @@ services:
     image: mongo:7
     container_name: tradereplay-mongodb
     restart: unless-stopped
+    profiles: ["infra"]
     ports:
       - "27017:27017"
     volumes:
@@ -18,6 +19,7 @@ services:
     image: redis:7
     container_name: tradereplay-redis
     restart: always
+    profiles: ["infra"]
     command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     ports:
       - "6379:6379"
@@ -31,6 +33,7 @@ services:
     image: docker.redpanda.com/redpandadata/redpanda:v24.2.10
     container_name: tradereplay-kafka
     restart: unless-stopped
+    profiles: ["infra"]
     command:
       - redpanda
       - start
@@ -67,6 +70,7 @@ services:
       dockerfile: Dockerfile
     container_name: tradereplay-backend
     restart: unless-stopped
+    profiles: ["apps"]
     env_file:
       - ./.env
       - ./.env.secrets
@@ -96,6 +100,7 @@ services:
       dockerfile: Dockerfile
     container_name: tradereplay-worker
     restart: unless-stopped
+    profiles: ["apps"]
     command: npm run start:worker
     env_file:
       - ./.env
@@ -124,6 +129,7 @@ services:
       context: ./services/logo-service
     container_name: tradereplay-logo-service
     restart: unless-stopped
+    profiles: ["apps"]
     command: npm run start
     env_file:
       - ./.env
@@ -153,6 +159,7 @@ services:
       dockerfile: Dockerfile
     container_name: tradereplay-kafka-service
     restart: unless-stopped
+    profiles: ["apps"]
     command: npm run start:kafka
     env_file:
       - ./.env
@@ -179,6 +186,7 @@ services:
       context: ./services/chart-service
     container_name: tradereplay-chart-service
     restart: unless-stopped
+    profiles: ["apps"]
     command: npm run start
     env_file:
       - ./.env
@@ -206,6 +214,7 @@ services:
     image: prom/prometheus:latest
     container_name: tradereplay-prometheus
     restart: unless-stopped
+    profiles: ["tools"]
     volumes:
       - ./deploy/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     command:
@@ -220,6 +229,7 @@ services:
     image: grafana/grafana:latest
     container_name: tradereplay-grafana
     restart: unless-stopped
+    profiles: ["tools"]
     ports:
       - "3001:3000"
     environment:
@@ -232,5 +242,20 @@ services:
       prometheus:
         condition: service_started
 
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: tradereplay-jenkins
+    restart: unless-stopped
+    profiles: ["tools"]
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    depends_on:
+      backend:
+        condition: service_started
+
 volumes:
   mongo_data:
+  jenkins_home:

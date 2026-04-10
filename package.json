@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "scripts": {
     "env:check": "node scripts/check-env.js",
+    "dev:infra": "docker compose --profile infra up -d mongodb redis kafka",
+    "dev:tools": "docker compose --profile tools up -d prometheus grafana jenkins",
+    "dev:up": "npm run env:check && npm run dev:infra && docker compose --profile apps up -d backend worker kafka-service chart-service",
+    "dev:up:full": "npm run env:check && npm run dev:infra && docker compose --profile apps up -d backend worker logo-service kafka-service chart-service",
+    "dev:down": "docker compose down",
+    "dev:reset": "docker compose down -v --remove-orphans",
+    "dev:logs": "docker compose logs -f --tail=200 backend chart-service mongodb redis kafka",
     "app": "concurrently -n backend,chart-service,frontend -c green,blue,cyan \"node backend/bootstrap-dev.js\" \"npm --prefix services/chart-service run dev\" \"npm --prefix frontend run dev\"",
     "app:full": "concurrently -n backend,worker,logo-service,kafka,chart-service,frontend -c green,yellow,magenta,blue,white,cyan \"node backend/bootstrap-dev.js\" \"npm --prefix backend run dev:worker\" \"npm --prefix services/logo-service run dev\" \"npm --prefix backend run dev:kafka\" \"npm --prefix services/chart-service run dev\" \"npm --prefix frontend run dev\"",
     "install:all": "npm --prefix backend install && npm --prefix frontend install && npm --prefix services/logo-service install",
