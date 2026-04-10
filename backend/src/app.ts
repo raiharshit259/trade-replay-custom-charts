@@ -10,7 +10,9 @@ import { createBullBoard } from "@bull-board/api";
 import { ExpressAdapter } from "@bull-board/express";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { env } from "./config/env";
-import { isRedisMockMode, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { getRedisHealthStatus, isRedisFallbackMode, isRedisMockMode, redisClient, redisPublisher, redisSubscriber } from "./config/redis";
+import { getMongoHealthStatus } from "./config/db";
+import { getKafkaHealthStatus } from "./config/kafka";
 import { verifyJwt } from "./utils/jwt";
 import { logger } from "./utils/logger";
 import authRoutes from "./routes/authRoutes";
@@ -72,6 +74,7 @@ export function createApp() {
   }
 
   const engine = new SimulationEngine(io);
+  const logoEnabled = env.LOGO_SERVICE_ENABLED && !isRedisFallbackMode();
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token as string | undefined;
@@ -112,7 +115,7 @@ export function createApp() {
     });
   }, 5 * 60 * 1000).unref();
 
-  if (env.LOGO_SERVICE_ENABLED) {
+  if (logoEnabled) {
     const serverAdapter = new ExpressAdapter();
     serverAdapter.setBasePath("/admin/queues");
     createBullBoard({
@@ -126,6 +129,9 @@ export function createApp() {
 
   app.get("/api/health", async (_req, res) => {
     const local = getChartServiceHealthStatus();
+    const redis = getRedisHealthStatus();
+    const mongo = getMongoHealthStatus();
+    const kafka = getKafkaHealthStatus();
     let remote: {
       reachable: boolean;
       ok?: boolean;
@@ -157,19 +163,25 @@ export function createApp() {
 
     res.json({
       ok: true,
+      dependencies: {
+        mongo,
+        redis,
+        kafka,
+      },
       chartService: {
         local,
         remote,
       },
       logoService: {
-        enabled: env.LOGO_SERVICE_ENABLED,
-        degraded: !env.LOGO_SERVICE_ENABLED,
+        enabled: logoEnabled,
+        degraded: !logoEnabled,
+        reason: logoEnabled ? null : "disabled_in_dev_fallback_or_config",
       },
     });
   });
 
   app.get("/api/metrics", async (_req, res) => {
-    const queueStats = env.LOGO_SERVICE_ENABLED
+    const queueStats = logoEnabled
       ? await (async () => {
         const queue = getLogoQueue();
         const [waiting, active, delayed, completed, failed] = await Promise.all([
@@ -217,7 +229,7 @@ export function createApp() {
   });
 
   app.get("/metrics", async (_req, res) => {
-    const queueStats = env.LOGO_SERVICE_ENABLED
+    const queueStats = logoEnabled
       ? await (async () => {
         const queue = getLogoQueue();
         const [waiting, active, delayed, completed, failed] = await Promise.all([

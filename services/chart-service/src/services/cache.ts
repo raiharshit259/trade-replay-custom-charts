@@ -1,5 +1,5 @@
 import { env } from "../config/env";
-import { isRedisReady, redisClient } from "../config/redis";
+import { isRedisFallbackActive, isRedisReady, redisClient } from "../config/redis";
 import { incrementCounter } from "./metrics";
 import { logWarn } from "./logger";
 
@@ -17,6 +17,10 @@ type CachePolicy = {
 
 const memoryCache = new Map<string, CacheEnvelope<unknown>>();
 const refreshInFlight = new Set<string>();
+
+function isCacheDisabledForFallback(): boolean {
+  return env.DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE && isRedisFallbackActive();
+}
 
 function cleanupMemory() {
   const now = Date.now();
@@ -49,6 +53,10 @@ export function ttlPolicyFromSource(source?: { to?: string }): CachePolicy {
 }
 
 async function getCacheEnvelope<T>(key: string): Promise<CacheEnvelope<T> | null> {
+  if (isCacheDisabledForFallback()) {
+    return null;
+  }
+
   if (isRedisReady()) {
     const raw = await redisClient.get(key);
     if (!raw) return null;
@@ -62,6 +70,10 @@ async function getCacheEnvelope<T>(key: string): Promise<CacheEnvelope<T> | null
 }
 
 async function setCacheEnvelope<T>(key: string, envelope: CacheEnvelope<T>): Promise<void> {
+  if (isCacheDisabledForFallback()) {
+    return;
+  }
+
   const ttlSeconds = Math.max(1, Math.ceil((envelope.expiresAt - Date.now()) / 1000));
 
   if (isRedisReady()) {

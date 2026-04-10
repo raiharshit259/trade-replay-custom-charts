@@ -35,12 +35,15 @@ const ensureInfra = spawnSync(process.execPath, [ensureInfraScript], {
 
 if ((ensureInfra.status ?? 1) !== 0) {
   console.warn("[bootstrap] Infra bootstrap failed. Falling back to in-memory test infra mode.");
-  process.env.E2E = process.env.E2E ?? "1";
-  process.env.NODE_ENV = process.env.NODE_ENV ?? "test";
+  process.env.NODE_ENV = process.env.NODE_ENV ?? "development";
+  process.env.APP_ENV = process.env.APP_ENV ?? "local";
+  process.env.DEV_ALLOW_MEMORY_DB = process.env.DEV_ALLOW_MEMORY_DB ?? "true";
+  process.env.DEV_ALLOW_MOCK_REDIS = process.env.DEV_ALLOW_MOCK_REDIS ?? "true";
+  process.env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE = process.env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE ?? "true";
   process.env.E2E_USE_MEMORY_MONGO = process.env.E2E_USE_MEMORY_MONGO ?? "true";
   process.env.E2E_USE_MOCK_REDIS = process.env.E2E_USE_MOCK_REDIS ?? "true";
   process.env.LOGO_SERVICE_ENABLED = process.env.LOGO_SERVICE_ENABLED ?? "false";
-  process.env.KAFKA_ENABLED = process.env.KAFKA_ENABLED ?? "false";
+  process.env.KAFKA_ENABLED = process.env.KAFKA_ENABLED ?? "true";
 }
 
 // Spawn the actual backend with inherited env

@@ -8,7 +8,11 @@ const REDIS_RETRY_DELAY_MS = 500;
 
 let hasLoggedRedisError = false;
 let hasLoggedRedisUnavailable = false;
-const useMockRedis = (env.NODE_ENV === "test" || env.E2E) && env.E2E_USE_MOCK_REDIS;
+const useMockRedisInTest = (env.NODE_ENV === "test" || env.E2E) && env.E2E_USE_MOCK_REDIS;
+const allowMockRedisFallback = (env.APP_ENV !== "production") && env.DEV_ALLOW_MOCK_REDIS;
+let useMockRedis = useMockRedisInTest;
+let redisLastError: string | null = null;
+let hasLoggedMockMode = false;
 
 function parseRedisUrl(url: string): RedisOptions {
   const parsed = new URL(url);
@@ -28,29 +32,61 @@ function parseRedisUrl(url: string): RedisOptions {
   };
 }
 
-export const redisConnectionOptions = parseRedisUrl(useMockRedis ? "redis://127.0.0.1:6379" : env.REDIS_URL);
-const redisClientOptions: RedisOptions = {
-  ...redisConnectionOptions,
-  lazyConnect: true,
-  maxRetriesPerRequest: null,
-  enableOfflineQueue: false,
-  retryStrategy: () => null,
-};
+export let redisConnectionOptions = parseRedisUrl(useMockRedis ? "redis://127.0.0.1:6379" : env.REDIS_URL);
+function getRedisClientOptions(): RedisOptions {
+  return {
+    ...redisConnectionOptions,
+    lazyConnect: true,
+    maxRetriesPerRequest: null,
+    enableOfflineQueue: false,
+    retryStrategy: () => null,
+  };
+}
 
-function createRedisClient(): IORedis {
-  if (useMockRedis) {
-    return new (RedisMock as unknown as { new(url: string): IORedis })("redis://127.0.0.1:6379");
-  }
+function createMockClient(): IORedis {
+  return new (RedisMock as unknown as { new(url: string): IORedis })("redis://127.0.0.1:6379");
+}
 
+function createRealClient(): IORedis {
   return new IORedis(env.REDIS_URL, {
-    ...redisClientOptions,
+    ...getRedisClientOptions(),
   });
 }
 
-export const redisClient = createRedisClient();
+function createRedisClient(): IORedis {
+  if (useMockRedis) {
+    return createMockClient();
+  }
 
-export const redisPublisher = redisClient.duplicate(redisClientOptions);
-export const redisSubscriber = redisClient.duplicate(redisClientOptions);
+  return createRealClient();
+}
+
+export let redisClient = createRedisClient();
+export let redisPublisher = useMockRedis ? createMockClient() : redisClient.duplicate(getRedisClientOptions());
+export let redisSubscriber = useMockRedis ? createMockClient() : redisClient.duplicate(getRedisClientOptions());
+
+function attachRedisErrorHandlers(): void {
+  redisClient.on("ready", resetRedisErrorFlag);
+  redisPublisher.on("ready", resetRedisErrorFlag);
+  redisSubscriber.on("ready", resetRedisErrorFlag);
+
+  redisClient.on("error", (error) => {
+    redisLastError = error instanceof Error ? error.message : String(error);
+    logRedisErrorOnce("redis_error");
+  });
+
+  redisPublisher.on("error", (error) => {
+    redisLastError = error instanceof Error ? error.message : String(error);
+    logRedisErrorOnce("redis_publisher_error");
+  });
+
+  redisSubscriber.on("error", (error) => {
+    redisLastError = error instanceof Error ? error.message : String(error);
+    logRedisErrorOnce("redis_subscriber_error");
+  });
+}
+
+attachRedisErrorHandlers();
 
 function logRedisErrorOnce(channel: string): void {
   if (hasLoggedRedisError) return;
@@ -61,25 +97,6 @@ function logRedisErrorOnce(channel: string): void {
 function resetRedisErrorFlag(): void {
   hasLoggedRedisError = false;
 }
-
-redisClient.on("ready", resetRedisErrorFlag);
-redisPublisher.on("ready", resetRedisErrorFlag);
-redisSubscriber.on("ready", resetRedisErrorFlag);
-
-redisClient.on("error", (error) => {
-  void error;
-  logRedisErrorOnce("redis_error");
-});
-
-redisPublisher.on("error", (error) => {
-  void error;
-  logRedisErrorOnce("redis_publisher_error");
-});
-
-redisSubscriber.on("error", (error) => {
-  void error;
-  logRedisErrorOnce("redis_subscriber_error");
-});
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -131,6 +148,26 @@ export function isRedisMockMode(): boolean {
   return useMockRedis;
 }
 
+export function isRedisFallbackMode(): boolean {
+  return useMockRedis;
+}
+
+export function getRedisHealthStatus(): {
+  ready: boolean;
+  pubSubReady: boolean;
+  fallback: "mock" | "external";
+  degraded: boolean;
+  lastError: string | null;
+} {
+  return {
+    ready: isRedisReady(),
+    pubSubReady: isRedisPubSubReady(),
+    fallback: useMockRedis ? "mock" : "external",
+    degraded: useMockRedis,
+    lastError: redisLastError,
+  };
+}
+
 export function getRedisClient(): IORedis {
   return redisClient;
 }
@@ -145,9 +182,12 @@ export function getRedisSubscriber(): IORedis {
 
 export async function ensureRedisReady(): Promise<void> {
   if (useMockRedis) {
-    logger.warn("redis_mock_enabled", {
-      reason: "test_or_e2e_mode",
-    });
+    if (!hasLoggedMockMode) {
+      hasLoggedMockMode = true;
+      logger.warn("redis_mock_enabled", {
+        reason: "test_or_fallback_mode",
+      });
+    }
     return;
   }
 
@@ -164,6 +204,7 @@ export async function ensureRedisReady(): Promise<void> {
   if (mainReady && publisherReady && subscriberReady) {
     logger.info("redis_connected", { url: env.REDIS_URL });
     hasLoggedRedisUnavailable = false;
+    redisLastError = null;
     return;
   }
 
@@ -176,6 +217,22 @@ export async function ensureRedisReady(): Promise<void> {
   if (!hasLoggedRedisUnavailable) {
     hasLoggedRedisUnavailable = true;
     logger.error("redis_unavailable", { url: env.REDIS_URL });
+  }
+
+  if (allowMockRedisFallback) {
+    useMockRedis = true;
+    redisConnectionOptions = parseRedisUrl("redis://127.0.0.1:6379");
+    redisClient = createMockClient();
+    redisPublisher = createMockClient();
+    redisSubscriber = createMockClient();
+    attachRedisErrorHandlers();
+    hasLoggedMockMode = false;
+    logger.warn("redis_dev_fallback_mock_enabled", {
+      reason: "redis_unreachable",
+      url: env.REDIS_URL,
+    });
+    await ensureRedisReady();
+    return;
   }
 
   throw new Error(`Redis unavailable after ${REDIS_CONNECT_RETRIES} retries`);

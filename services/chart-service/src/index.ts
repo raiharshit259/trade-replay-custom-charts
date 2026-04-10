@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { connectRedis } from "./config/redis";
+import { connectRedis, isRedisFallbackActive } from "./config/redis";
 import { startStreaming } from "./services/streaming";
 import { logError, logInfo } from "./services/logger";
 
@@ -11,6 +11,11 @@ async function bootstrap(): Promise<void> {
 
   try {
     await connectRedis();
+    if (isRedisFallbackActive()) {
+      logInfo("chart_service_redis_fallback_enabled", {
+        mode: "cache-disabled",
+      });
+    }
   } catch {
     // Continue with in-memory cache fallback.
   }

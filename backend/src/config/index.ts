@@ -63,6 +63,9 @@ function normalizeLocalEnv(): void {
   setIfMissing("LOGO_FALLBACK_TARGET_RATIO", "0.05");
   setIfMissing("LOGO_SERVICE_ENABLED", "true");
   setIfMissing("DEV_AUTO_START_INFRA", "true");
+  setIfMissing("DEV_ALLOW_MEMORY_DB", "true");
+  setIfMissing("DEV_ALLOW_MOCK_REDIS", "true");
+  setIfMissing("DEV_DISABLE_KAFKA_IF_UNAVAILABLE", "true");
   setIfMissing("E2E_USE_MEMORY_MONGO", "false");
   setIfMissing("E2E_USE_MOCK_REDIS", "false");
   setIfMissing("E2E", process.env.PLAYWRIGHT_TEST ? "1" : "0");
@@ -126,6 +129,9 @@ const EnvSchema = z.object({
   CHART_SERVICE_BREAKER_COOLDOWN_MS: z.string().optional(),
   LOGO_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
   DEV_AUTO_START_INFRA: z.enum(["true", "false"]).optional(),
+  DEV_ALLOW_MEMORY_DB: z.enum(["true", "false"]).optional(),
+  DEV_ALLOW_MOCK_REDIS: z.enum(["true", "false"]).optional(),
+  DEV_DISABLE_KAFKA_IF_UNAVAILABLE: z.enum(["true", "false"]).optional(),
   E2E_USE_MEMORY_MONGO: z.enum(["true", "false"]).optional(),
   E2E_USE_MOCK_REDIS: z.enum(["true", "false"]).optional(),
   E2E: z.enum(["0", "1"]).optional(),
@@ -270,6 +276,9 @@ export const CONFIG = {
   chartServiceBreakerCooldownMs: optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS"))) : 30000,
   logoServiceEnabled: optionalEnv("LOGO_SERVICE_ENABLED") !== "false",
   devAutoStartInfra: optionalEnv("DEV_AUTO_START_INFRA") !== "false",
+  devAllowMemoryDb: optionalEnv("DEV_ALLOW_MEMORY_DB") !== "false",
+  devAllowMockRedis: optionalEnv("DEV_ALLOW_MOCK_REDIS") !== "false",
+  devDisableKafkaIfUnavailable: optionalEnv("DEV_DISABLE_KAFKA_IF_UNAVAILABLE") !== "false",
   e2eUseMemoryMongo: optionalEnv("E2E_USE_MEMORY_MONGO") === "true",
   e2eUseMockRedis: optionalEnv("E2E_USE_MOCK_REDIS") === "true",
   e2e: optionalEnv("E2E") === "1",

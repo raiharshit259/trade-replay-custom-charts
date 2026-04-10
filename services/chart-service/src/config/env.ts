@@ -24,8 +24,11 @@ function normalizeKafkaBrokers(brokers: string): string {
 }
 
 export const env = {
+  APP_ENV: read("APP_ENV", "local"),
   PORT: Number(read("CHART_SERVICE_PORT", "4010")),
   REDIS_URL: normalizeRedis(read("REDIS_URL", "redis://127.0.0.1:6379")),
+  DEV_ALLOW_MOCK_REDIS: read("DEV_ALLOW_MOCK_REDIS", "true") === "true",
+  DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE: read("DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE", "true") === "true",
   MAIN_BACKEND_URL: read("MAIN_BACKEND_URL", "http://127.0.0.1:4000"),
   CHART_SERVICE_AUTH_ENABLED: read("CHART_SERVICE_AUTH_ENABLED", "false") === "true",
   CHART_SERVICE_AUTH_TOKEN: read("CHART_SERVICE_AUTH_TOKEN", ""),

@@ -15,7 +15,7 @@ import {
 import { resolveCandles } from "./services/candleSource";
 import { getMetricsSnapshot, incrementCounter } from "./services/metrics";
 import { logInfo } from "./services/logger";
-import { isRedisReady } from "./config/redis";
+import { getRedisHealthStatus, isRedisReady } from "./config/redis";
 import { getStreamingHealth } from "./services/streaming";
 import { env } from "./config/env";
 
@@ -46,11 +46,16 @@ export function createApp() {
   });
 
   app.get("/health", (_req, res) => {
+    const redis = getRedisHealthStatus();
     res.json({
       ok: true,
       service: "chart-service",
       cacheBackend: isRedisReady() ? "redis" : "memory",
       redisReady: isRedisReady(),
+      dependencies: {
+        redis,
+        cacheDisabled: env.DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE && redis.degraded,
+      },
       streaming: getStreamingHealth(),
     });
   });

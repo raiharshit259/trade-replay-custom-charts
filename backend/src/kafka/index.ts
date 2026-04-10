@@ -1,4 +1,4 @@
-import { isKafkaEnabled, setKafkaReady } from "../config/kafka";
+import { disableKafkaRuntime, isKafkaEnabled, setKafkaReady } from "../config/kafka";
 import { ensureTopics } from "./admin";
 import { connectProducer, disconnectProducer } from "./producer";
 import { disconnectAllConsumers } from "./consumer";
@@ -6,6 +6,7 @@ import { startTradeProcessor } from "./consumers/tradeProcessor";
 import { startPortfolioUpdater } from "./consumers/portfolioUpdater";
 import { startAnalyticsProcessor } from "./consumers/analyticsProcessor";
 import { logger } from "../utils/logger";
+import { env } from "../config/env";
 
 export async function bootstrapKafkaProducerOnly(): Promise<void> {
   if (!isKafkaEnabled()) {
@@ -25,6 +26,12 @@ export async function bootstrapKafkaProducerOnly(): Promise<void> {
     logger.error("kafka_producer_bootstrap_failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+    if (env.APP_ENV !== "production" && env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE) {
+      disableKafkaRuntime("kafka_unreachable_in_dev");
+      logger.warn("kafka_auto_disabled_for_dev", {
+        reason: "broker_unreachable",
+      });
+    }
     setKafkaReady(false);
   }
 }

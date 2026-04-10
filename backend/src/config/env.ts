@@ -1,6 +1,7 @@
 import { CONFIG } from "./index";
 
 export const env = {
+  APP_ENV: CONFIG.appEnv,
   NODE_ENV: CONFIG.nodeEnv,
   PORT: CONFIG.port,
   API_RATE_LIMIT_MAX: CONFIG.apiRateLimitMax,
@@ -43,6 +44,9 @@ export const env = {
   CHART_SERVICE_BREAKER_COOLDOWN_MS: CONFIG.chartServiceBreakerCooldownMs,
   LOGO_SERVICE_ENABLED: CONFIG.logoServiceEnabled,
   DEV_AUTO_START_INFRA: CONFIG.devAutoStartInfra,
+  DEV_ALLOW_MEMORY_DB: CONFIG.devAllowMemoryDb,
+  DEV_ALLOW_MOCK_REDIS: CONFIG.devAllowMockRedis,
+  DEV_DISABLE_KAFKA_IF_UNAVAILABLE: CONFIG.devDisableKafkaIfUnavailable,
   E2E_USE_MEMORY_MONGO: CONFIG.e2eUseMemoryMongo,
   E2E_USE_MOCK_REDIS: CONFIG.e2eUseMockRedis,
   E2E: CONFIG.e2e,
