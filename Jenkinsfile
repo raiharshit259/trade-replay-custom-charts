@@ -27,9 +27,9 @@ pipeline {
     stage('Install Dependencies') {
       steps {
         sh 'npm ci --include=dev --no-audit --no-fund'
-        sh 'npm --prefix backend ci --include=dev --ignore-scripts --omit=optional --no-audit --no-fund'
+        sh 'npm --prefix backend ci --include=dev --ignore-scripts --no-audit --no-fund'
         sh 'npm --prefix frontend ci --include=dev --ignore-scripts --no-audit --no-fund'
-        sh 'npm --prefix services/logo-service ci --include=dev --ignore-scripts --omit=optional --no-audit --no-fund'
+        sh 'npm --prefix services/logo-service ci --include=dev --ignore-scripts --no-audit --no-fund'
       }
     }
 
