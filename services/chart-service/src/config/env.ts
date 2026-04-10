@@ -1,15 +1,7 @@
-import dotenv from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { loadEnv } from "./loadEnv.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const rootEnvPath = path.resolve(__dirname, "../../../../.env");
-if (fs.existsSync(rootEnvPath)) {
-  dotenv.config({ path: rootEnvPath });
-}
+// Load .env and .env.secrets deterministically (must be first)
+const envStatus = loadEnv();
 
 function read(key: string, fallback: string): string {
   return process.env[key] ?? process.env[`LOCAL_${key}`] ?? fallback;

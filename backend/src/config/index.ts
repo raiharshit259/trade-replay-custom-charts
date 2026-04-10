@@ -1,21 +1,8 @@
-import dotenv from "dotenv";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { loadEnv } from "./loadEnv.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const envPath = path.resolve(__dirname, "../../../.env");
-const secretsPath = path.resolve(__dirname, "../../../.env.secrets");
-
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath, override: false });
-}
-if (fs.existsSync(secretsPath)) {
-  dotenv.config({ path: secretsPath, override: true });
-}
+// Load .env and .env.secrets deterministically (must be first)
+const envStatus = loadEnv();
 
 const appEnv = (process.env.APP_ENV ?? "local").toLowerCase();
 

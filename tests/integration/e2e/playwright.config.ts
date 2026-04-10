@@ -11,7 +11,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "npm --prefix ..\\..\\..\\backend run dev",
+      command: "node ..\\..\\..\\backend\\bootstrap-dev.js",
       url: "http://localhost:4000/api/health",
       reuseExistingServer: false,
       timeout: 120_000,
