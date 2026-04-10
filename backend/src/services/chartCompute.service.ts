@@ -79,6 +79,7 @@ const bundleMetrics: ChartBundleMetrics = {
 };
 
 let missingAuthTokenLogged = false;
+let chartDelegationDisabledLogged = false;
 
 type ChartServiceError = Error & {
   reason: FallbackReason;
@@ -353,6 +354,7 @@ export function resetChartServiceStateForTests(): void {
   bundleMetrics.latencyCount = 0;
   bundleMetrics.latencyTotalMs = 0;
   missingAuthTokenLogged = false;
+  chartDelegationDisabledLogged = false;
 }
 
 export function getChartServiceHealthStatus(): ChartServiceHealth {
@@ -448,6 +450,14 @@ export async function computeBundle(input: BundleInput) {
       });
       return payload;
     }
+  }
+
+  if (!chartDelegationDisabledLogged) {
+    chartDelegationDisabledLogged = true;
+    logger.info("chart_service_delegation_disabled", {
+      reason: env.CHART_SERVICE_ENABLED ? "auth_unavailable" : "disabled_by_config",
+      url: env.CHART_SERVICE_URL,
+    });
   }
 
   const fallback = await fallbackBundle(input);

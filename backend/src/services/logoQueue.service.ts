@@ -1,8 +1,9 @@
 import { Queue } from "bullmq";
-import { isRedisReady, redisClient } from "../config/redis";
+import { isRedisFallbackMode, isRedisReady, redisClient } from "../config/redis";
 import { redisConnectionOptions } from "../config/redis";
 import { logger } from "../utils/logger";
 import { clusterScopedKey } from "./redisKey.service";
+import { isLogoQueueModeEnabled } from "./logoServiceMode.service";
 
 type QueueSymbol = {
   symbol: string;
@@ -48,6 +49,10 @@ async function shouldEnqueueByDedupeWindow(fullSymbol: string): Promise<boolean>
 }
 
 function getLogoQueue(): Queue<QueueSymbol> {
+  if (!isLogoQueueEnabled()) {
+    throw new Error("LOGO_QUEUE_DISABLED");
+  }
+
   if (queue) return queue;
 
   queue = new Queue<QueueSymbol>(LOGO_QUEUE_NAME, {
@@ -61,6 +66,10 @@ function getLogoQueue(): Queue<QueueSymbol> {
   });
 
   return queue;
+}
+
+export function isLogoQueueEnabled(): boolean {
+  return isLogoQueueModeEnabled() && !isRedisFallbackMode();
 }
 
 function canEnqueueNow(): boolean {
@@ -91,6 +100,7 @@ function safeJobId(fullSymbol: string): string {
 }
 
 async function enqueueSymbolLogoEnrichmentInternal(symbol: QueueSymbolInput): Promise<void> {
+  if (!isLogoQueueEnabled()) return;
   if (hasExistingIcon(symbol)) return;
 
   const normalized: QueueSymbol = {
@@ -161,6 +171,7 @@ export function enqueueSymbolLogoEnrichment(symbol: QueueSymbolInput): void {
 
 export function enqueueSymbolLogoEnrichmentBatch(symbols: QueueSymbolInput[]): void {
   void (async () => {
+    if (!isLogoQueueEnabled()) return;
     const queueRef = getLogoQueue();
     const now = Date.now();
     const unresolved = symbols

@@ -43,6 +43,8 @@ export const env = {
   CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: CONFIG.chartServiceBreakerFailureWindowMs,
   CHART_SERVICE_BREAKER_COOLDOWN_MS: CONFIG.chartServiceBreakerCooldownMs,
   LOGO_SERVICE_ENABLED: CONFIG.logoServiceEnabled,
+  LOGO_SERVICE_MODE: CONFIG.logoServiceMode,
+  LOGO_SERVICE_URL: CONFIG.logoServiceUrl,
   DEV_AUTO_START_INFRA: CONFIG.devAutoStartInfra,
   DEV_ALLOW_MEMORY_DB: CONFIG.devAllowMemoryDb,
   DEV_ALLOW_MOCK_REDIS: CONFIG.devAllowMockRedis,

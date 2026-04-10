@@ -25,7 +25,8 @@ import { createChartRoutes } from "./routes/chartRoutes";
 import { verifyToken } from "./middlewares/verifyToken";
 import { createPortfolioController } from "./controllers/portfolioController";
 import { SimulationEngine } from "./services/simulationEngine";
-import { getLogoQueue } from "./services/logoQueue.service";
+import { getLogoQueue, isLogoQueueEnabled } from "./services/logoQueue.service";
+import { getLogoServiceHealthStatus } from "./services/logoServiceMode.service";
 import { getChartServiceHealthStatus } from "./services/chartCompute.service";
 import { warmSymbolSearchCache } from "./services/symbol.service";
 import { getMetricsSnapshot } from "./services/metrics.service";
@@ -74,7 +75,7 @@ export function createApp() {
   }
 
   const engine = new SimulationEngine(io);
-  const logoEnabled = env.LOGO_SERVICE_ENABLED && !isRedisFallbackMode();
+  const logoQueueEnabled = isLogoQueueEnabled();
 
   io.use((socket, next) => {
     const token = socket.handshake.auth.token as string | undefined;
@@ -115,7 +116,7 @@ export function createApp() {
     });
   }, 5 * 60 * 1000).unref();
 
-  if (logoEnabled) {
+  if (logoQueueEnabled) {
     const serverAdapter = new ExpressAdapter();
     serverAdapter.setBasePath("/admin/queues");
     createBullBoard({
@@ -132,6 +133,7 @@ export function createApp() {
     const redis = getRedisHealthStatus();
     const mongo = getMongoHealthStatus();
     const kafka = getKafkaHealthStatus();
+    const logoService = await getLogoServiceHealthStatus();
     let remote: {
       reachable: boolean;
       ok?: boolean;
@@ -172,16 +174,17 @@ export function createApp() {
         local,
         remote,
       },
-      logoService: {
-        enabled: logoEnabled,
-        degraded: !logoEnabled,
-        reason: logoEnabled ? null : "disabled_in_dev_fallback_or_config",
+      logoService,
+      logoQueue: {
+        enabled: logoQueueEnabled,
+        degraded: !logoQueueEnabled,
+        reason: logoQueueEnabled ? null : "queue_disabled_for_non_local_logo_mode_or_redis_fallback",
       },
     });
   });
 
   app.get("/api/metrics", async (_req, res) => {
-    const queueStats = logoEnabled
+    const queueStats = logoQueueEnabled
       ? await (async () => {
         const queue = getLogoQueue();
         const [waiting, active, delayed, completed, failed] = await Promise.all([
@@ -229,7 +232,7 @@ export function createApp() {
   });
 
   app.get("/metrics", async (_req, res) => {
-    const queueStats = logoEnabled
+    const queueStats = logoQueueEnabled
       ? await (async () => {
         const queue = getLogoQueue();
         const [waiting, active, delayed, completed, failed] = await Promise.all([

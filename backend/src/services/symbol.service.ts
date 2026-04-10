@@ -5,7 +5,7 @@ import { env } from "../config/env";
 import { resolveStaticIcon } from "../config/staticIconMap";
 import { isRedisReady } from "../config/redis";
 import { getOrSetCachedJsonWithLock } from "./cache.service";
-import { enqueueSymbolLogoEnrichmentBatch } from "./logoQueue.service";
+import { enqueueSymbolLogoEnrichmentBatch, isLogoQueueEnabled } from "./logoQueue.service";
 import { clusterScopedKey, stableHash } from "./redisKey.service";
 import { recordSymbolIconResult, recordSymbolSearchLatency } from "./metrics.service";
 
@@ -288,7 +288,7 @@ export async function searchSymbols(params: {
     };
   });
 
-  if (!params.skipLogoEnrichment && isRedisReady()) {
+  if (!params.skipLogoEnrichment && isRedisReady() && isLogoQueueEnabled()) {
     enqueueSymbolLogoEnrichmentBatch(response.items.slice(0, 20));
   }
 

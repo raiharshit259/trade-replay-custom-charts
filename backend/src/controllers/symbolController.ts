@@ -4,6 +4,7 @@ import { AppError } from "../utils/appError";
 import { fetchSymbolFilters, mapCategoryToSymbolType, searchSymbols } from "../services/symbol.service";
 import { mapServiceError } from "../utils/serviceError";
 import { MissingLogoModel } from "../models/MissingLogo";
+import { reportMissingLogoToRemote } from "../services/logoServiceMode.service";
 
 const searchSchema = z.object({
   query: z.string().default(""),
@@ -73,6 +74,8 @@ export function createSymbolController() {
       }
 
       try {
+        await reportMissingLogoToRemote(parsed.data);
+
         await MissingLogoModel.updateOne(
           { fullSymbol: parsed.data.fullSymbol.toUpperCase() },
           {

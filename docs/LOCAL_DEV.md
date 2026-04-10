@@ -25,8 +25,28 @@ npm run env:check
 Compose profiles are grouped as:
 
 - infra: mongodb, redis, kafka
-- apps: backend, worker, kafka-service, chart-service, logo-service
+- apps: backend, worker, kafka-service, chart-service
+- logo: logo-service
 - tools: prometheus, grafana, jenkins
+
+## Logo Service Modes
+
+Backend logo behavior is controlled by:
+
+- LOGO_SERVICE_ENABLED=true|false
+- LOGO_SERVICE_MODE=local|remote|disabled
+- LOGO_SERVICE_URL=<remote logo service base URL>
+
+Recommended for chart-engine local development:
+
+- LOGO_SERVICE_ENABLED=true
+- LOGO_SERVICE_MODE=remote
+- LOGO_SERVICE_URL set in .env.secrets to the production logo-service URL
+
+If you want logo features fully off locally:
+
+- LOGO_SERVICE_ENABLED=false
+- LOGO_SERVICE_MODE=disabled
 
 ## Start Commands
 
@@ -53,6 +73,8 @@ Start local app stack with logo-service:
 ```bash
 npm run dev:up:full
 ```
+
+The `dev:up` command does not start logo-service. `dev:up:full` starts it explicitly via the `logo` profile.
 
 ## Stop and Reset
 

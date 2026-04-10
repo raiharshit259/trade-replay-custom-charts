@@ -129,7 +129,7 @@ services:
       context: ./services/logo-service
     container_name: tradereplay-logo-service
     restart: unless-stopped
-    profiles: ["apps"]
+    profiles: ["logo"]
     command: npm run start
     env_file:
       - ./.env

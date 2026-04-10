@@ -61,7 +61,9 @@ function normalizeLocalEnv(): void {
   setIfMissing("LOGO_ENRICHMENT_ENABLED", "false");
   setIfMissing("LOGO_ENRICHMENT_INTERVAL_MS", "21600000");
   setIfMissing("LOGO_FALLBACK_TARGET_RATIO", "0.05");
-  setIfMissing("LOGO_SERVICE_ENABLED", "true");
+  setIfMissing("LOGO_SERVICE_ENABLED", (process.env.APP_ENV ?? "local") === "local" ? "false" : "true");
+  setIfMissing("LOGO_SERVICE_MODE", (process.env.APP_ENV ?? "local") === "local" ? "remote" : "local");
+  setIfMissing("LOGO_SERVICE_URL", process.env.LOCAL_LOGO_SERVICE_URL ?? "");
   setIfMissing("DEV_AUTO_START_INFRA", "true");
   setIfMissing("DEV_ALLOW_MEMORY_DB", "true");
   setIfMissing("DEV_ALLOW_MOCK_REDIS", "true");
@@ -128,6 +130,8 @@ const EnvSchema = z.object({
   CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS: z.string().optional(),
   CHART_SERVICE_BREAKER_COOLDOWN_MS: z.string().optional(),
   LOGO_SERVICE_ENABLED: z.enum(["true", "false"]).optional(),
+  LOGO_SERVICE_MODE: z.enum(["local", "remote", "disabled"]).optional(),
+  LOGO_SERVICE_URL: z.string().optional(),
   DEV_AUTO_START_INFRA: z.enum(["true", "false"]).optional(),
   DEV_ALLOW_MEMORY_DB: z.enum(["true", "false"]).optional(),
   DEV_ALLOW_MOCK_REDIS: z.enum(["true", "false"]).optional(),
@@ -275,6 +279,14 @@ export const CONFIG = {
   chartServiceBreakerFailureWindowMs: optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_FAILURE_WINDOW_MS"))) : 30000,
   chartServiceBreakerCooldownMs: optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS") ? Math.max(1000, Number(optionalEnv("CHART_SERVICE_BREAKER_COOLDOWN_MS"))) : 30000,
   logoServiceEnabled: optionalEnv("LOGO_SERVICE_ENABLED") !== "false",
+  logoServiceMode: (() => {
+    const raw = optionalEnv("LOGO_SERVICE_MODE").toLowerCase();
+    if (raw === "local" || raw === "remote" || raw === "disabled") {
+      return raw;
+    }
+    return appEnv === "local" ? "remote" : "local";
+  })(),
+  logoServiceUrl: optionalEnv("LOGO_SERVICE_URL"),
   devAutoStartInfra: optionalEnv("DEV_AUTO_START_INFRA") !== "false",
   devAllowMemoryDb: optionalEnv("DEV_ALLOW_MEMORY_DB") !== "false",
   devAllowMockRedis: optionalEnv("DEV_ALLOW_MOCK_REDIS") !== "false",
