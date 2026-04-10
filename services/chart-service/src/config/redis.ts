@@ -1,5 +1,6 @@
 import IORedis from "ioredis";
 import { env } from "./env";
+import { logWarn } from "../services/logger";
 
 export const redisClient = new IORedis(env.REDIS_URL, {
   lazyConnect: true,
@@ -10,6 +11,33 @@ export const redisClient = new IORedis(env.REDIS_URL, {
 
 let redisFallbackActive = false;
 let redisLastError: string | null = null;
+let redisErrorBurstCount = 0;
+let redisErrorBurstSince = Date.now();
+let redisLastSummaryLogAt = 0;
+
+function maybeLogRedisErrorSummary(errorMessage: string): void {
+  const now = Date.now();
+  redisErrorBurstCount += 1;
+
+  if (now - redisLastSummaryLogAt < 15_000) {
+    return;
+  }
+
+  logWarn("chart_service_redis_error_suppressed", {
+    error: errorMessage,
+    attempts: redisErrorBurstCount,
+    windowMs: now - redisErrorBurstSince,
+  });
+
+  redisLastSummaryLogAt = now;
+  redisErrorBurstCount = 0;
+  redisErrorBurstSince = now;
+}
+
+redisClient.on("error", (error) => {
+  redisLastError = error instanceof Error ? error.message : String(error);
+  maybeLogRedisErrorSummary(redisLastError);
+});
 
 function allowDevFallback(): boolean {
   return env.APP_ENV !== "production" && env.DEV_ALLOW_MOCK_REDIS;

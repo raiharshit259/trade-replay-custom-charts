@@ -7,11 +7,81 @@ import { startPortfolioUpdater } from "./consumers/portfolioUpdater";
 import { startAnalyticsProcessor } from "./consumers/analyticsProcessor";
 import { logger } from "../utils/logger";
 import { env } from "../config/env";
+import net from "node:net";
+
+type KafkaProbeResult = {
+  reachable: boolean;
+  broker?: string;
+  reason?: string;
+};
+
+function parseBrokerAddress(broker: string): { host: string; port: number } | null {
+  const [hostRaw, portRaw] = broker.split(":");
+  const host = hostRaw?.trim();
+  const port = Number(portRaw);
+  if (!host || !Number.isFinite(port) || port <= 0) return null;
+  return { host, port };
+}
+
+function probeBroker(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    let settled = false;
+
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.once("timeout", () => done(false));
+  });
+}
+
+async function probeKafkaBrokers(timeoutMs = 750): Promise<KafkaProbeResult> {
+  const brokers = env.KAFKA_BROKERS.split(",").map((broker) => broker.trim()).filter(Boolean);
+  if (brokers.length === 0) {
+    return { reachable: false, reason: "missing_broker_config" };
+  }
+
+  for (const broker of brokers) {
+    const parsed = parseBrokerAddress(broker);
+    if (!parsed) continue;
+    const reachable = await probeBroker(parsed.host, parsed.port, timeoutMs);
+    if (reachable) {
+      return { reachable: true, broker };
+    }
+  }
+
+  return {
+    reachable: false,
+    broker: brokers[0],
+    reason: "tcp_connect_failed",
+  };
+}
 
 export async function bootstrapKafkaProducerOnly(): Promise<void> {
   if (!isKafkaEnabled()) {
     logger.info("kafka_disabled");
     return;
+  }
+
+  if (env.APP_ENV !== "production" && env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE) {
+    const probe = await probeKafkaBrokers();
+    if (!probe.reachable) {
+      const reason = `kafka_unreachable_in_dev:${probe.reason ?? "unknown"}`;
+      disableKafkaRuntime(reason);
+      logger.warn("kafka_auto_disabled_for_dev", {
+        reason,
+        broker: probe.broker ?? null,
+        strategy: "preflight_tcp_probe",
+      });
+      return;
+    }
   }
 
   try {

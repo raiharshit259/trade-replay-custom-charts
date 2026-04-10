@@ -2,6 +2,7 @@ import { env } from "./env";
 
 export const kafkaConfig = {
   enabled: env.KAFKA_ENABLED,
+  streamingEnabled: env.CHART_STREAMING_ENABLED,
   brokers: env.KAFKA_BROKERS.split(",").map((broker) => broker.trim()).filter(Boolean),
   clientId: env.CHART_KAFKA_CLIENT_ID,
   groupId: env.CHART_KAFKA_GROUP_ID,

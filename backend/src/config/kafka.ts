@@ -59,6 +59,8 @@ export function getKafkaHealthStatus(): {
   ready: boolean;
   degraded: boolean;
   reason: string | null;
+  optional: boolean;
+  brokers: string[];
 } {
   return {
     enabledByConfig: env.KAFKA_ENABLED,
@@ -66,5 +68,7 @@ export function getKafkaHealthStatus(): {
     ready: kafkaReady,
     degraded: kafkaRuntimeDisabled,
     reason: kafkaRuntimeDisableReason,
+    optional: env.APP_ENV !== "production",
+    brokers: env.KAFKA_BROKERS.split(",").map((broker) => broker.trim()).filter(Boolean),
   };
 }

@@ -2,6 +2,7 @@ import { loadEnv } from "./loadEnv.js";
 
 // Load .env and .env.secrets deterministically (must be first)
 const envStatus = loadEnv();
+const runtimeAppEnv = (process.env.APP_ENV ?? "local").toLowerCase();
 
 function read(key: string, fallback: string): string {
   return process.env[key] ?? process.env[`LOCAL_${key}`] ?? fallback;
@@ -39,6 +40,7 @@ export const env = {
   CHART_CANDLE_SOURCE_PATH: read("CHART_CANDLE_SOURCE_PATH", "/api/live/candles"),
   CHART_SERVICE_TIMEOUT_MS: Number(read("CHART_SERVICE_TIMEOUT_MS", "5000")),
   KAFKA_ENABLED: read("KAFKA_ENABLED", "false") === "true",
+  CHART_STREAMING_ENABLED: read("CHART_STREAMING_ENABLED", runtimeAppEnv === "production" ? "true" : "false") === "true",
   KAFKA_BROKERS: normalizeKafkaBrokers(read("KAFKA_BROKERS", "localhost:19092")),
   CHART_CANDLE_UPDATE_TOPIC: read("CHART_CANDLE_UPDATE_TOPIC", "chart.candle.updated"),
   CHART_KAFKA_DLQ_TOPIC: read("CHART_KAFKA_DLQ_TOPIC", "chart.candle.updated.dlq"),

@@ -31,6 +31,9 @@ const state = {
 
 type StreamingHealth = {
   enabled: boolean;
+  runtimeEnabled: boolean;
+  optional: boolean;
+  disabledReason: string | null;
   connected: boolean;
   topic: string;
   dlqTopic: string;
@@ -106,8 +109,16 @@ function updateFailureTelemetry(messageTime: string | null): void {
 }
 
 export function getStreamingHealth(): StreamingHealth {
+  const runtimeEnabled = kafkaConfig.enabled && kafkaConfig.streamingEnabled;
+  const disabledReason = !kafkaConfig.enabled
+    ? "kafka_disabled"
+    : (!kafkaConfig.streamingEnabled ? "streaming_disabled_by_config" : null);
+
   return {
     enabled: kafkaConfig.enabled,
+    runtimeEnabled,
+    optional: true,
+    disabledReason,
     connected: state.connected,
     topic: kafkaConfig.topic,
     dlqTopic: kafkaConfig.dlqTopic,
@@ -230,7 +241,13 @@ export function markStreamingFailureForTests(input: { messageTime?: string }): v
 }
 
 export async function startStreaming(): Promise<(() => Promise<void>) | null> {
-  if (!kafkaConfig.enabled || state.started) {
+  if (!kafkaConfig.enabled || !kafkaConfig.streamingEnabled || state.started) {
+    if (!state.started) {
+      logInfo("chart_streaming_disabled", {
+        kafkaEnabled: kafkaConfig.enabled,
+        streamingEnabled: kafkaConfig.streamingEnabled,
+      });
+    }
     return null;
   }
 
