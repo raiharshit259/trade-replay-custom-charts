@@ -12,6 +12,7 @@ pipeline {
 
   environment {
     NODE_ENV = 'production'
+    NODE_OPTIONS = '--max-old-space-size=6144'
     COMPOSE_PROJECT_NAME = 'tradereplay'
   }
 
