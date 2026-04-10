@@ -54,18 +54,25 @@ pipeline {
     stage('Post-Deploy Validation') {
       steps {
         sh '''
-          echo "Waiting for backend to be ready..."
+          echo "Waiting for backend to be healthy..."
           i=1
-          max_retries=30
-          until curl -sf http://127.0.0.1:4000/api/health > /dev/null; do
+          max_retries=90
+          while true; do
+            health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' tradereplay-backend 2>/dev/null || echo missing)
+            if [ "$health" = "healthy" ]; then
+              break
+            fi
             if [ "$i" -ge "$max_retries" ]; then
-              echo "Backend failed to become ready after $max_retries attempts"
+              echo "Backend failed to become healthy after $max_retries attempts (last status: $health)"
+              docker compose ps || true
+              docker compose logs --tail=120 backend || true
               exit 1
             fi
-            echo "Retry $i/$max_retries..."
+            echo "Retry $i/$max_retries... backend status=$health"
             i=$((i + 1))
             sleep 2
           done
+          curl -sf http://127.0.0.1:4000/api/health > /dev/null
           echo "Backend is ready"
         '''
         sh 'BACKEND_URL=http://127.0.0.1:4000 npm run validate'
