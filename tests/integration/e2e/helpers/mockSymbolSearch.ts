@@ -31,7 +31,7 @@ type SymbolFixtureData = {
   assets: AssetFixture[];
 };
 
-const fixturePath = path.resolve(process.cwd(), "e2e", "fixtures", "symbols.json");
+const fixturePath = path.resolve(process.cwd(), "tests", "integration", "e2e", "fixtures", "symbols.json");
 const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8")) as SymbolFixtureData;
 
 function includesNormalized(haystack: string | undefined, needle: string): boolean {
