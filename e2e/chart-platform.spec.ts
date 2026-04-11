@@ -694,3 +694,199 @@ test("status row and toolbox header are uncluttered", async ({ page }) => {
   // Snap mode selector should be in the toolbar area (outside toolbox)
   await expect(page.locator('[data-testid="chart-snap-mode"]:visible').first()).toBeVisible();
 });
+
+test("toolbox scroll: reach bottom group and pick a tool", async ({ page }) => {
+  const uid = Date.now();
+  const email = `tbxscrl_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `tbxscrl_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+
+  const clickByTestId = async (testId: string) => {
+    await page.evaluate((id) => {
+      const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+      const target = nodes.find((n) => n instanceof HTMLElement && n.offsetParent !== null) ?? nodes[0];
+      if (target instanceof HTMLElement) target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, testId);
+  };
+
+  // Toolbox scroll container exists
+  const scrollContainer = page.locator('[data-testid="toolbox-scroll"]:visible').first();
+  await expect(scrollContainer).toBeVisible();
+
+  // Scroll to the bottom of the toolbox
+  await scrollContainer.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+
+  // The last tool group ("system") should be visible after scrolling
+  const systemGroup = page.locator('[data-testid="tool-group-system"]:visible').first();
+  await expect(systemGroup).toBeVisible();
+
+  // Expand system group
+  await clickByTestId("tool-group-system");
+
+  // Pick the zoom tool from system group
+  await clickByTestId("tool-zoom");
+  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: zoom");
+});
+
+test("OHLC legend row displays structured values", async ({ page }) => {
+  const uid = Date.now();
+  const email = `ohlcrow_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `ohlcrow_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+
+  // OHLC status row exists
+  const statusRow = page.locator('[data-testid="ohlc-status"]:visible').first();
+  await expect(statusRow).toBeVisible();
+
+  // Legend wrapper exists
+  const legend = page.locator('[data-testid="chart-ohlc-legend"]:visible').first();
+  await expect(legend).toBeVisible();
+
+  // Status row should contain O, H, L, C labels
+  const text = await statusRow.textContent();
+  expect(text).toMatch(/O\s/);
+  expect(text).toMatch(/H\s/);
+  expect(text).toMatch(/L\s/);
+  expect(text).toMatch(/C\s/);
+
+  // Snap badge is displayed
+  const snapBadge = page.locator('[data-testid="snap-dropdown"]:visible').first();
+  await expect(snapBadge).toBeVisible();
+  const snapText = await snapBadge.textContent();
+  expect(snapText).toMatch(/free|time|ohlc/i);
+});
+
+test("multi-chart layout switch with drawing in pane", async ({ page }) => {
+  const uid = Date.now();
+  const email = `mclayout_${uid}@example.com`;
+  const password = "pass1234";
+
+  await expect
+    .poll(async () => {
+      const response = await page.request.get("http://127.0.0.1:4000/api/health");
+      return response.status();
+    })
+    .toBe(200);
+
+  const registerResponse = await page.request.post("http://127.0.0.1:4000/api/auth/register", {
+    data: { email, password, name: `mclayout_${uid}` },
+  });
+  const authResponse = registerResponse.ok()
+    ? registerResponse
+    : await page.request.post("http://127.0.0.1:4000/api/auth/login", {
+        data: { email, password },
+      });
+  expect(authResponse.ok()).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByPlaceholder("trader@example.com").fill(email);
+  await page.getByPlaceholder("••••••••").fill(password);
+  await page.locator("form").getByRole("button", { name: "Login" }).click();
+  await expect(page).toHaveURL(/homepage|\/$/);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible();
+
+  const clickByTestId = async (testId: string) => {
+    await page.evaluate((id) => {
+      const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+      const target = nodes.find((n) => n instanceof HTMLElement && n.offsetParent !== null) ?? nodes[0];
+      if (target instanceof HTMLElement) target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, testId);
+  };
+
+  // Switch to 2-horizontal layout
+  await clickByTestId("layout-2h");
+  await expect(page.locator('[data-testid="super-chart-grid"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="super-pane-0"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="super-pane-1"]:visible').first()).toBeVisible();
+
+  // Draw in pane 0
+  await clickByTestId("super-pane-0");
+  await clickByTestId("tool-trend");
+  const overlay = page.locator('[data-testid="super-pane-0"] canvas[aria-label="chart-drawing-overlay"]').first();
+  await expect(overlay).toBeVisible();
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  if (box) {
+    await page.evaluate(
+      ({ x1, y1, x2, y2 }) => {
+        const pane = document.querySelector('[data-testid="super-pane-0"]');
+        const canvas = pane?.querySelector('canvas[aria-label="chart-drawing-overlay"]') as HTMLCanvasElement | null;
+        if (!canvas) return;
+        canvas.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: x1, clientY: y1 }));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: x2, clientY: y2 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: x2, clientY: y2 }));
+      },
+      {
+        x1: box.x + box.width * 0.25,
+        y1: box.y + box.height * 0.3,
+        x2: box.x + box.width * 0.6,
+        y2: box.y + box.height * 0.55,
+      }
+    );
+  }
+
+  // Switch to 4-pane layout
+  await clickByTestId("layout-4");
+  await expect(page.locator('[data-testid="super-pane-0"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="super-pane-3"]:visible').first()).toBeVisible();
+
+  // Switch back to single layout
+  await clickByTestId("layout-1");
+  const singleOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  await expect(singleOverlay).toBeVisible();
+});

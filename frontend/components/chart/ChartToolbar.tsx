@@ -1,9 +1,17 @@
 import {
+  Activity,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
+  Box,
   Camera,
   ChevronLeft,
   ChevronRight,
   Circle,
+  Clock3,
+  Fan,
+  Flag,
+  GitFork,
   GitMerge,
   Layers,
   Layers3,
@@ -12,7 +20,9 @@ import {
   MessageSquare,
   MessageSquareText,
   Minus,
+  Mountain,
   Move3d,
+  Orbit,
   PencilLine,
   Pin,
   Play,
@@ -21,6 +31,7 @@ import {
   Ruler,
   SeparatorVertical,
   Sparkles,
+  Square,
   Tag,
   TrendingDown,
   TrendingUp,
@@ -39,6 +50,8 @@ const iconMap = {
   Move3d: Move3d,
   Waves: Waves,
   ArrowRight: ArrowRight,
+  ArrowUp: ArrowUp,
+  ArrowDown: ArrowDown,
   Layers: Layers,
   RectangleHorizontal: RectangleHorizontal,
   Circle: Circle,
@@ -61,6 +74,16 @@ const iconMap = {
   Ruler: Ruler,
   ZoomIn: ZoomIn,
   Camera: Camera,
+  Fan: Fan,
+  Orbit: Orbit,
+  Clock3: Clock3,
+  Box: Box,
+  Square: Square,
+  GitFork: GitFork,
+  Mountain: Mountain,
+  Activity: Activity,
+  ActivitySquare: Activity,
+  Flag: Flag,
 } as const;
 
 type ChartToolbarProps = {
@@ -244,64 +267,70 @@ export default function ChartToolbar({
         </button>
       )}
 
-      <div data-testid="toolbox-panel" className={`absolute left-3 top-3 z-40 rounded-xl border border-primary/25 bg-background/80 p-2.5 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${toolboxMinimized ? '-translate-x-[110%] pointer-events-none opacity-0' : 'translate-x-0 opacity-100'} bottom-3 w-[268px] max-w-[80vw] overflow-y-auto` : `${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px] overflow-y-auto'}`}`}>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Toolbox</span>
-            {selectedDrawingVariant && (
-              <span data-testid="selected-tool-indicator" className="pointer-events-none truncate rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary/80">
-                {selectedDrawingVariant}
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            data-testid={toolboxMinimized ? 'toolbox-expand' : 'toolbox-collapse'}
-            onClick={() => setToolboxMinimized(!toolboxMinimized)}
-            className="inline-flex min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
-            title={toolboxMinimized ? 'Expand toolbox' : 'Collapse toolbox'}
-          >
-            {toolboxMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
-
-        {!toolboxMinimized && toolGroups.map((group) => {
-          const expanded = expandedCategory === group.id;
-          return (
-            <div key={group.id} className="mb-1 rounded-lg border border-border/60 bg-background/50">
-              <button
-                type="button"
-                data-testid={`tool-group-${group.id}`}
-                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold transition ${expanded ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setExpandedCategory(expanded ? null : group.id)}
-              >
-                <span>{group.label}</span>
-                <span>{expanded ? '−' : '+'}</span>
-              </button>
-              {expanded && (
-                <div className="grid grid-cols-1 gap-1 px-2 pb-2">
-                  {group.variants.map((variant) => {
-                    const Icon = iconMap[variant.iconKey as keyof typeof iconMap] ?? Move3d;
-                    const active = toolState.variant === variant.id;
-                    return (
-                      <button
-                        key={variant.id}
-                        type="button"
-                        data-testid={`tool-${variant.id}`}
-                        onClick={() => onVariant(group.id, variant.id)}
-                        className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition ${active ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
-                        title={variant.label}
-                      >
-                        <Icon size={16} />
-                        <span>{variant.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+      <div data-testid="toolbox-panel" className={`absolute left-3 top-3 z-40 flex flex-col rounded-xl border border-primary/25 bg-background/80 backdrop-blur-xl transition-all duration-200 ${isMobile ? `${toolboxMinimized ? '-translate-x-[110%] pointer-events-none opacity-0' : 'translate-x-0 opacity-100'} bottom-3 w-[268px] max-w-[80vw]` : `${toolboxMinimized ? 'w-[164px]' : 'max-h-[74vh] w-[268px]'}`}`}>
+        <div className="shrink-0 px-2.5 pt-2.5 pb-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-[13px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Toolbox</span>
+              {selectedDrawingVariant && (
+                <span data-testid="selected-tool-indicator" className="pointer-events-none truncate rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary/80">
+                  {selectedDrawingVariant}
+                </span>
               )}
             </div>
-          );
-        })}
+            <button
+              type="button"
+              data-testid={toolboxMinimized ? 'toolbox-expand' : 'toolbox-collapse'}
+              onClick={() => setToolboxMinimized(!toolboxMinimized)}
+              className="inline-flex min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground"
+              title={toolboxMinimized ? 'Expand toolbox' : 'Collapse toolbox'}
+            >
+              {toolboxMinimized ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </div>
+        </div>
+
+        {!toolboxMinimized && (
+          <div data-testid="toolbox-scroll" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5">
+            {toolGroups.map((group) => {
+              const expanded = expandedCategory === group.id;
+              return (
+                <div key={group.id} className="mb-1 rounded-lg border border-border/60 bg-background/50">
+                  <button
+                    type="button"
+                    data-testid={`tool-group-${group.id}`}
+                    className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[13px] font-semibold transition ${expanded ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                    onClick={() => setExpandedCategory(expanded ? null : group.id)}
+                  >
+                    <span>{group.label}</span>
+                    <span>{expanded ? '−' : '+'}</span>
+                  </button>
+                  {expanded && (
+                    <div className="grid grid-cols-1 gap-1 px-2 pb-2">
+                      {group.variants.map((variant) => {
+                        const Icon = iconMap[variant.iconKey as keyof typeof iconMap] ?? Move3d;
+                        const active = toolState.variant === variant.id;
+                        return (
+                          <button
+                            key={variant.id}
+                            type="button"
+                            data-testid={`tool-${variant.id}`}
+                            onClick={() => onVariant(group.id, variant.id)}
+                            className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition ${active ? 'bg-primary/25 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`}
+                            title={variant.label}
+                          >
+                            <Icon size={16} />
+                            <span>{variant.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );

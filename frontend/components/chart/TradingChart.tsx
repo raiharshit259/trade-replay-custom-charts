@@ -1025,26 +1025,41 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         ) : null}
       </div>
 
-      <div data-testid="ohlc-status" className="mt-2 rounded-xl border border-primary/25 bg-background/90 px-3 py-2 backdrop-blur-xl">
-        <div data-testid="chart-ohlc-legend" className="text-[11px] text-muted-foreground">
-          {currentLegendRow ? (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="font-semibold text-foreground">O {currentLegendRow.open.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">H {currentLegendRow.high.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">L {currentLegendRow.low.toFixed(2)}</span>
-              <span className="font-semibold text-foreground">C {currentLegendRow.close.toFixed(2)}</span>
-              <span className={`font-semibold ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
-              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
-              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
-              <span className="uppercase tracking-[0.1em] text-muted-foreground/80">snap {crosshairSnapMode}</span>
+      <div data-testid="ohlc-status" className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 rounded-xl border border-primary/25 bg-background/90 px-3 py-1.5 backdrop-blur-xl">
+        <div data-testid="chart-ohlc-legend" className="contents">
+        {currentLegendRow ? (
+          <>
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-foreground">O</span>
+              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.open.toFixed(2)}</span>
             </div>
-          ) : (
-            <div>No data</div>
-          )}
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-foreground">H</span>
+              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.high.toFixed(2)}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-foreground">L</span>
+              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.low.toFixed(2)}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-foreground">C</span>
+              <span className="text-[11px] font-bold text-foreground tabular-nums">{currentLegendRow.close.toFixed(2)}</span>
+            </div>
+            <span className={`text-[11px] font-bold tabular-nums ${legendChangeClass}`}>{legendChangePct >= 0 ? '+' : ''}{legendChangePct.toFixed(2)}%</span>
+            <span className="mx-1 h-3 w-px bg-border/60" />
+            <span className="text-[10px] tabular-nums uppercase tracking-wider text-muted-foreground">{currentLegendPoint ? new Date(Number(currentLegendPoint.time) * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''}</span>
+            <span className="mx-1 h-3 w-px bg-border/60" />
+            <span className="text-[10px] tabular-nums text-muted-foreground">Cursor {currentLegendPoint ? currentLegendPoint.price.toFixed(2) : '--'}</span>
+            <span className="mx-1 h-3 w-px bg-border/60" />
+            <span data-testid="snap-dropdown" className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary/80">{crosshairSnapMode}</span>
+          </>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">No data</span>
+        )}
         </div>
       </div>
 
-      <div className="mt-2">
+      <div className="mt-1.5">
         <ObjectTreePanel open={treeOpen} isMobile={isMobile} drawings={toolState.drawings} selectedDrawingId={selectedDrawingId} onSelect={setSelectedDrawingId} onToggleVisible={(id) => updateDrawing(id, (d) => ({ ...d, visible: !d.visible, options: { ...d.options, visible: !d.options.visible } }))} onToggleLocked={(id) => updateDrawing(id, (d) => ({ ...d, locked: !d.locked, options: { ...d.options, locked: !d.options.locked } }))} onDelete={removeDrawing} onTogglePanel={() => setTreeOpen((prev) => !prev)} />
       </div>
 
