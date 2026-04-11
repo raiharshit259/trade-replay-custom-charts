@@ -21,6 +21,16 @@ interface TradingChartProps {
   mode?: 'simulation' | 'live';
 }
 
+const TOP_INDICATOR_IDS = ['sma', 'ema', 'vwap', 'rsi', 'macd'] as const;
+
+function makeIndicatorAcronym(name: string): string {
+  return name
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toLowerCase() ?? '')
+    .join('');
+}
+
 function drawText(ctx: CanvasRenderingContext2D, drawing: Drawing, x: number, y: number, text: string) {
   const weight = drawing.options.bold ? '700' : '400';
   const italic = drawing.options.italic ? 'italic' : 'normal';
@@ -81,6 +91,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [showGoLive, setShowGoLive] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const [indicatorSearch, setIndicatorSearch] = useState('');
+  const [highlightedResultIndex, setHighlightedResultIndex] = useState(0);
   const [enabledIndicators, setEnabledIndicators] = useState<string[]>([]);
   const [treeOpen, setTreeOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -93,6 +105,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [touchMode, setTouchMode] = useState<'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch'>('idle');
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
+  const indicatorSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   const {
     toolState,
@@ -115,10 +128,58 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const { ready, chartContainerRef, overlayRef, chartRef, getActiveSeries, pointerToDataPoint, zoomToRange, transformedData } = useChart(data, visibleCount, chartType);
   const indicatorInstancesRef = useRef<Record<string, string>>({});
-  const availableIndicatorIds = useMemo(() => {
-    const preferred = ['sma', 'ema', 'rsi'];
-    const catalog = new Set(listIndicators().map((indicator) => indicator.id));
-    return preferred.filter((id) => catalog.has(id));
+  const indicatorCatalog = useMemo(() => {
+    return listIndicators()
+      .map((indicator) => {
+        const id = indicator.id.trim();
+        const normalizedName = indicator.name.trim();
+        const aliasSet = new Set<string>([id.toLowerCase(), normalizedName.toLowerCase(), makeIndicatorAcronym(normalizedName)]);
+        return {
+          id,
+          name: normalizedName,
+          aliases: Array.from(aliasSet),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
+  const indicatorById = useMemo(
+    () => new Map(indicatorCatalog.map((indicator) => [indicator.id, indicator])),
+    [indicatorCatalog]
+  );
+  const topIndicatorIds = useMemo(() => {
+    const available = new Set(indicatorCatalog.map((indicator) => indicator.id));
+    return TOP_INDICATOR_IDS.filter((id) => available.has(id));
+  }, [indicatorCatalog]);
+  const topIndicators = useMemo(
+    () => topIndicatorIds.map((id) => indicatorById.get(id)).filter(Boolean) as Array<{ id: string; name: string; aliases: string[] }>,
+    [indicatorById, topIndicatorIds]
+  );
+  const filteredIndicators = useMemo(() => {
+    const query = indicatorSearch.trim().toLowerCase();
+    if (!query) return [] as Array<{ id: string; name: string; aliases: string[] }>;
+    return indicatorCatalog.filter((indicator) => {
+      if (indicator.id.toLowerCase().includes(query)) return true;
+      if (indicator.name.toLowerCase().includes(query)) return true;
+      return indicator.aliases.some((alias) => alias.includes(query));
+    });
+  }, [indicatorCatalog, indicatorSearch]);
+
+  const addIndicator = useCallback((indicatorId: string) => {
+    let added = false;
+    setEnabledIndicators((prev) => {
+      if (prev.includes(indicatorId)) return prev;
+      added = true;
+      return [...prev, indicatorId];
+    });
+    if (added) {
+      setIndicatorSearch('');
+      setHighlightedResultIndex(0);
+    }
+    return added;
+  }, []);
+
+  const removeEnabledIndicator = useCallback((indicatorId: string) => {
+    setEnabledIndicators((prev) => prev.filter((id) => id !== indicatorId));
   }, []);
 
   const applyTouchMode = useCallback((mode: 'idle' | 'pan' | 'axis-zoom' | 'scroll' | 'pinch') => {
@@ -214,14 +275,33 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [symbol, transformedData]);
 
   useEffect(() => {
-    setEnabledIndicators((prev) => prev.filter((id) => availableIndicatorIds.includes(id)));
-  }, [availableIndicatorIds]);
+    const availableIds = new Set(indicatorCatalog.map((indicator) => indicator.id));
+    setEnabledIndicators((prev) => prev.filter((id) => availableIds.has(id)));
+  }, [indicatorCatalog]);
 
   useEffect(() => {
-    if (!availableIndicatorIds.length) {
+    if (!indicatorCatalog.length) {
       setIndicatorsOpen(false);
     }
-  }, [availableIndicatorIds]);
+  }, [indicatorCatalog]);
+
+  useEffect(() => {
+    if (!indicatorsOpen) {
+      setIndicatorSearch('');
+      setHighlightedResultIndex(0);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      indicatorSearchInputRef.current?.focus();
+    });
+  }, [indicatorsOpen]);
+
+  useEffect(() => {
+    setHighlightedResultIndex((prev) => {
+      if (!filteredIndicators.length) return 0;
+      return Math.min(prev, filteredIndicators.length - 1);
+    });
+  }, [filteredIndicators]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -753,7 +833,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />
 
         {indicatorsOpen ? (
-          <div data-testid="indicators-panel" className="absolute right-3 top-[70px] z-40 w-[220px] rounded-xl border border-primary/25 bg-background/90 p-2.5 backdrop-blur-xl">
+          <div data-testid="indicators-panel" className="absolute right-3 top-[70px] z-40 w-[320px] rounded-xl border border-primary/25 bg-background/90 p-2.5 backdrop-blur-xl">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Indicators</span>
               <button
@@ -764,26 +844,122 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
                 Close
               </button>
             </div>
-            <div className="space-y-1.5">
-              {availableIndicatorIds.length ? availableIndicatorIds.map((indicatorId) => {
-                const checked = enabledIndicators.includes(indicatorId);
-                return (
-                  <label key={indicatorId} className="flex items-center justify-between rounded-md border border-border/70 bg-background/70 px-2 py-1.5 text-[12px] text-foreground">
-                    <span className="uppercase tracking-[0.05em]">{indicatorId}</span>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setEnabledIndicators((prev) => checked ? prev.filter((id) => id !== indicatorId) : [...prev, indicatorId]);
-                      }}
-                    />
-                  </label>
-                );
-              }) : (
-                <div className="rounded-md border border-border/60 bg-background/60 px-2 py-1.5 text-[11px] text-muted-foreground">
-                  No supported indicators found.
+            <div className="space-y-2">
+              <div data-testid="indicators-top5" className="rounded-md border border-border/60 bg-background/60 p-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Top 5</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {topIndicators.map((indicator) => {
+                    const isActive = enabledIndicators.includes(indicator.id);
+                    return (
+                      <button
+                        key={indicator.id}
+                        type="button"
+                        data-testid={`indicator-top5-${indicator.id}`}
+                        onClick={() => {
+                          addIndicator(indicator.id);
+                          indicatorSearchInputRef.current?.focus();
+                        }}
+                        className={`rounded-md border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] ${isActive ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-300' : 'border-border/70 bg-background/80 text-foreground hover:border-primary/40 hover:bg-primary/10'}`}
+                      >
+                        {indicator.id.toUpperCase()} {isActive ? 'Added' : 'Add'}
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
+
+              <div>
+                <input
+                  ref={indicatorSearchInputRef}
+                  data-testid="indicators-search"
+                  value={indicatorSearch}
+                  onChange={(event) => {
+                    setIndicatorSearch(event.target.value);
+                    setHighlightedResultIndex(0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setIndicatorsOpen(false);
+                      return;
+                    }
+                    if (!filteredIndicators.length) return;
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setHighlightedResultIndex((prev) => (prev + 1) % filteredIndicators.length);
+                      return;
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      setHighlightedResultIndex((prev) => (prev - 1 + filteredIndicators.length) % filteredIndicators.length);
+                      return;
+                    }
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      const selected = filteredIndicators[highlightedResultIndex];
+                      if (selected) addIndicator(selected.id);
+                    }
+                  }}
+                  placeholder="Search indicators"
+                  className="w-full rounded-md border border-border/70 bg-background/70 px-2.5 py-2 text-[12px] text-foreground outline-none focus:border-primary/40"
+                />
+              </div>
+
+              <div data-testid="indicators-dropdown" className="rounded-md border border-border/60 bg-background/60 p-1.5">
+                {!indicatorSearch.trim() ? (
+                  <div className="px-1 py-1 text-[11px] text-muted-foreground">All indicators (type to search)</div>
+                ) : null}
+                <div data-testid="indicators-results" className="max-h-44 space-y-1 overflow-y-auto">
+                  {indicatorSearch.trim() ? (
+                    filteredIndicators.length ? filteredIndicators.map((indicator, index) => {
+                      const isHighlighted = index === highlightedResultIndex;
+                      const isActive = enabledIndicators.includes(indicator.id);
+                      return (
+                        <button
+                          key={indicator.id}
+                          type="button"
+                          data-testid={`indicator-option-${indicator.id}`}
+                          onMouseEnter={() => setHighlightedResultIndex(index)}
+                          onClick={() => addIndicator(indicator.id)}
+                          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[12px] ${isHighlighted ? 'bg-primary/20 text-foreground' : 'text-foreground hover:bg-primary/10'} ${isActive ? 'opacity-80' : ''}`}
+                        >
+                          <span className="truncate">{indicator.name}</span>
+                          <span className={`ml-2 text-[10px] uppercase tracking-[0.08em] ${isActive ? 'text-emerald-300' : 'text-muted-foreground'}`}>{isActive ? 'Added' : indicator.id}</span>
+                        </button>
+                      );
+                    }) : (
+                      <div className="px-1 py-1 text-[11px] text-muted-foreground">No matching indicators.</div>
+                    )
+                  ) : null}
+                </div>
+              </div>
+
+              <div data-testid="indicators-active" className="rounded-md border border-border/60 bg-background/60 p-2">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Active</div>
+                {enabledIndicators.length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {enabledIndicators.map((indicatorId) => {
+                      const indicator = indicatorById.get(indicatorId);
+                      const label = indicator?.name ?? indicatorId.toUpperCase();
+                      return (
+                        <div key={indicatorId} className="inline-flex items-center gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200">
+                          <span className="max-w-[170px] truncate">{label}</span>
+                          <button
+                            type="button"
+                            data-testid={`indicator-remove-${indicatorId}`}
+                            onClick={() => removeEnabledIndicator(indicatorId)}
+                            className="rounded px-1 text-[10px] uppercase tracking-[0.08em] text-emerald-100 hover:bg-emerald-500/20"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-muted-foreground">No active indicators yet.</div>
+                )}
+              </div>
             </div>
           </div>
         ) : null}

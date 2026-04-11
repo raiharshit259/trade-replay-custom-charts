@@ -44,8 +44,30 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await page.locator('[data-testid="tool-minimize"]:visible').first().click();
 
   await page.locator('[data-testid="indicators-button"]:visible').first().click();
-  await expect(page.locator('[data-testid="indicators-panel"]:visible').first()).toBeVisible();
-  await page.locator('[data-testid="indicators-button"]:visible').first().click();
+  const indicatorsPanel = page.locator('[data-testid="indicators-panel"]:visible').first();
+  await expect(indicatorsPanel).toBeVisible();
+  await expect(indicatorsPanel.getByTestId('indicators-top5')).toBeVisible();
+  await expect(indicatorsPanel.getByTestId('indicators-search')).toBeFocused();
+  await expect(indicatorsPanel.locator('[data-testid^="indicator-top5-"]')).toHaveCount(5);
+  await expect(indicatorsPanel.getByTestId('indicators-results').locator('button')).toHaveCount(0);
+
+  const searchInput = indicatorsPanel.getByTestId('indicators-search');
+  await searchInput.fill('macd');
+  await expect(indicatorsPanel.getByTestId('indicators-dropdown')).toBeVisible();
+  await expect(indicatorsPanel.getByTestId('indicator-option-macd')).toBeVisible();
+  await searchInput.press('ArrowDown');
+  await searchInput.press('Enter');
+  await expect(indicatorsPanel.getByTestId('indicators-active')).toContainText(/macd|moving average convergence divergence/i);
+
+  await searchInput.fill('adx');
+  await expect(indicatorsPanel.getByTestId('indicator-option-adx')).toBeVisible();
+  await searchInput.press('Enter');
+  await expect(indicatorsPanel.getByTestId('indicators-active')).toContainText(/adx|average directional index/i);
+
+  await indicatorsPanel.getByTestId('indicator-remove-macd').click();
+  await expect(indicatorsPanel.getByTestId('indicators-active')).not.toContainText(/macd|moving average convergence divergence/i);
+
+  await searchInput.press('Escape');
   await expect(page.locator('[data-testid="indicators-panel"]:visible')).toHaveCount(0);
 
   const quickChartTypes = ["chart-type-candlestick", "chart-type-line", "chart-type-area"];
