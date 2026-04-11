@@ -116,6 +116,29 @@ import {
   breakoutStrengthDef,
   trendStrengthDef,
 } from './batch4.ts';
+import {
+  fractalDef,
+  alligatorDef,
+  gatorDef,
+  mfiWilliamsDef,
+} from './billWilliams.ts';
+import {
+  cpDojiDef,
+  cpHammerDef,
+  cpShootingStarDef,
+  cpEngulfingDef,
+  cpMorningStarDef,
+  cpEveningStarDef,
+  cpHaramiDef,
+  cpThreeWhiteSoldiersDef,
+  cpThreeBlackCrowsDef,
+  cpSpinningTopDef,
+  cpMarubozuDef,
+  cpPiercingLineDef,
+  cpDarkCloudDef,
+  cpTweezerDef,
+} from './candlePatterns.ts';
+import { allStubs } from './stubs.ts';
 
 let _registered = false;
 
@@ -223,4 +246,26 @@ export function registerBuiltins(): void {
   registerIndicator(volatilityEmaDef);
   registerIndicator(breakoutStrengthDef);
   registerIndicator(trendStrengthDef);
+  // Bill Williams
+  registerIndicator(fractalDef);
+  registerIndicator(alligatorDef);
+  registerIndicator(gatorDef);
+  registerIndicator(mfiWilliamsDef);
+  // Candlestick Patterns
+  registerIndicator(cpDojiDef);
+  registerIndicator(cpHammerDef);
+  registerIndicator(cpShootingStarDef);
+  registerIndicator(cpEngulfingDef);
+  registerIndicator(cpMorningStarDef);
+  registerIndicator(cpEveningStarDef);
+  registerIndicator(cpHaramiDef);
+  registerIndicator(cpThreeWhiteSoldiersDef);
+  registerIndicator(cpThreeBlackCrowsDef);
+  registerIndicator(cpSpinningTopDef);
+  registerIndicator(cpMarubozuDef);
+  registerIndicator(cpPiercingLineDef);
+  registerIndicator(cpDarkCloudDef);
+  registerIndicator(cpTweezerDef);
+  // Stubs (financials, fundamentals, community, breadth)
+  for (const def of allStubs) registerIndicator(def);
 }

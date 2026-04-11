@@ -16,6 +16,7 @@ import ChartTopBar from '@/components/chart/ChartTopBar';
 import ToolOptionsPanel from '@/components/chart/ToolOptionsPanel';
 import ObjectTreePanel from '@/components/chart/ObjectTreePanel';
 import IndicatorsModal from '@/components/chart/IndicatorsModal';
+import ChartPromptModal, { type ChartPromptRequest } from '@/components/chart/ChartPromptModal';
 
 interface TradingChartProps {
   data: CandleData[];
@@ -110,6 +111,11 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const touchStartRef = useRef<{ x: number; y: number; zone: 'left' | 'center' | 'right' } | null>(null);
   const touchRafRef = useRef<number | null>(null);
   const drawingIndexRef = useRef(new DrawingTimeIndex());
+
+  /* ─ Prompt modal for text/emoji tools ─ */
+  const [promptRequest, setPromptRequest] = useState<ChartPromptRequest | null>(null);
+  const pendingTextPointRef = useRef<DrawPoint | null>(null);
+  const pendingPointerEventRef = useRef<React.PointerEvent<HTMLCanvasElement> | null>(null);
 
   const {
     toolState,
@@ -885,7 +891,19 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       return;
     }
 
-    const text = activeDefinition?.capabilities.supportsText ? promptForVariantText(toolState.variant as Exclude<typeof toolState.variant, 'none'>) : undefined;
+    const needsText = activeDefinition?.capabilities.supportsText && toolState.variant !== 'priceLabel';
+    if (needsText) {
+      pendingTextPointRef.current = point;
+      const variant = toolState.variant as Exclude<typeof toolState.variant, 'none'>;
+      setPromptRequest(
+        variant === 'emoji'
+          ? { title: 'Emoji', label: 'Enter emoji', defaultValue: '🚀', preview: true }
+          : { title: 'Text', label: 'Enter text', defaultValue: 'Label', placeholder: 'Label' },
+      );
+      return;
+    }
+
+    const text = activeDefinition?.capabilities.supportsText ? '' : undefined;
     const result = startDraft(point, text);
     if (result.kind === 'finalized') {
       const d = drawingsRef.current[drawingsRef.current.length - 1];
@@ -1129,6 +1147,27 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
             <IndicatorsModal open={indicatorsOpen} onOpenChange={setIndicatorsOpen} enabledIndicators={enabledIndicators} onAddIndicator={addIndicator} onRemoveIndicator={removeEnabledIndicator} builtinIds={builtinIds} />
 
+            <ChartPromptModal
+              request={promptRequest}
+              onConfirm={(val) => {
+                setPromptRequest(null);
+                const pt = pendingTextPointRef.current;
+                pendingTextPointRef.current = null;
+                if (pt) {
+                  const result = startDraft(pt, val);
+                  if (result.kind === 'finalized') {
+                    const d = drawingsRef.current[drawingsRef.current.length - 1];
+                    if (d) setSelectedDrawingId(d.id);
+                  }
+                  renderOverlay();
+                }
+              }}
+              onCancel={() => {
+                setPromptRequest(null);
+                pendingTextPointRef.current = null;
+              }}
+            />
+
             {showGoLive ? (
               <button
                 type="button"
@@ -1193,8 +1232,3 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   );
 }
 
-function promptForVariantText(variant: Exclude<import('@/services/tools/toolRegistry').ToolVariant, 'none'>) {
-  if (variant === 'emoji') return window.prompt('Emoji', '🚀') || '🚀';
-  if (variant === 'priceLabel') return '';
-  return window.prompt('Text', 'Label') || 'Label';
-}

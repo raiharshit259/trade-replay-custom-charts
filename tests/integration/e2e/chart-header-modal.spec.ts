@@ -179,3 +179,68 @@ test("indicators modal: personal section shows placeholder", async ({ page }) =>
 
   await modal.getByTestId("indicators-modal-close").click();
 });
+
+/* ─── Technicals sub-tabs ────────────────────────────────────────────── */
+
+test("indicators modal: technicals sub-tabs switch content", async ({ page }) => {
+  await registerAndLogin(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
+
+  await clickByTestId(page, "indicators-button");
+  const modal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modal).toBeVisible();
+
+  // Default: Indicators tab visible with SMA
+  await expect(modal.getByTestId("tech-tab-indicators")).toBeVisible();
+  await expect(modal.getByTestId("tech-tab-patterns")).toBeVisible();
+  await expect(modal.getByTestId("indicator-catalog-sma")).toBeVisible();
+
+  // Switch to Patterns — candlestick patterns should appear
+  await modal.getByTestId("tech-tab-patterns").click();
+  await expect(modal.getByTestId("indicator-catalog-cp_doji")).toBeVisible();
+  await expect(modal.getByTestId("indicator-catalog-cp_hammer")).toBeVisible();
+
+  // Switch to Strategies — empty state
+  await modal.getByTestId("tech-tab-strategies").click();
+  await expect(modal.getByText("No strategies yet")).toBeVisible();
+
+  // Switch to Profiles — empty state
+  await modal.getByTestId("tech-tab-profiles").click();
+  await expect(modal.getByText("No profiles yet")).toBeVisible();
+
+  // Switch back to Indicators
+  await modal.getByTestId("tech-tab-indicators").click();
+  await expect(modal.getByTestId("indicator-catalog-sma")).toBeVisible();
+
+  await modal.getByTestId("indicators-modal-close").click();
+});
+
+/* ─── Add non-builtin indicator from patterns tab ────────────────────── */
+
+test("indicators modal: add candlestick pattern indicator", async ({ page }) => {
+  await registerAndLogin(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/simulation");
+  await expect(page.locator('[data-testid="chart-top-bar"]:visible').first()).toBeVisible();
+
+  await clickByTestId(page, "indicators-button");
+  const modal = page.locator('[data-testid="indicators-modal"]:visible').first();
+  await expect(modal).toBeVisible();
+
+  // Switch to Patterns tab and add Doji
+  await modal.getByTestId("tech-tab-patterns").click();
+  await expect(modal.getByTestId("indicator-catalog-cp_doji")).toBeVisible();
+  // Should show "Add" badge (not "Coming Soon")
+  await expect(modal.getByTestId("indicator-catalog-cp_doji")).toContainText(/add/i);
+  await modal.getByTestId("indicator-catalog-cp_doji").click();
+  // Should now show "Active"
+  await expect(modal.getByTestId("indicator-catalog-cp_doji")).toContainText(/active/i);
+
+  // Remove it
+  await modal.getByTestId("indicator-catalog-cp_doji").click();
+  await expect(modal.getByTestId("indicator-catalog-cp_doji")).not.toContainText(/active/i);
+
+  await modal.getByTestId("indicators-modal-close").click();
+});

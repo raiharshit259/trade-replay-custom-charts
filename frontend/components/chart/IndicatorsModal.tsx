@@ -8,10 +8,13 @@ import {
   communitySections,
   sidebarItems,
   fundamentalsTabs,
+  technicalsTabs,
+  getTechSectionsForTab,
   type CatalogEntry,
   type SidebarItem,
   type TechnicalSection,
   type FundamentalsTab,
+  type TechnicalsTab,
 } from '@/services/indicators/indicatorCatalog';
 
 /* ─── Props ─────────────────────────────────────────────────────────────── */
@@ -55,6 +58,7 @@ export default function IndicatorsModal({
   const [search, setSearch] = useState('');
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
   const [activeFundTab, setActiveFundTab] = useState<FundamentalsTab>('financialsTab');
+  const [activeTechTab, setActiveTechTab] = useState<TechnicalsTab>('indicators');
 
   const enabledSet = useMemo(() => new Set(enabledIndicators), [enabledIndicators]);
 
@@ -63,7 +67,7 @@ export default function IndicatorsModal({
     if (activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' || activeSidebar === 'purchased' || activeSidebar === 'store') {
       return [] as { label: string; items: CatalogEntry[] }[];
     }
-    if (activeSidebar === 'technicals') return technicalSections;
+    if (activeSidebar === 'technicals') return getTechSectionsForTab(activeTechTab);
     if (activeSidebar === 'financials') {
       if (activeFundTab === 'financialsTab') return financialSections;
       const tab = fundamentalsTabs.find((t) => t.id === activeFundTab);
@@ -73,7 +77,7 @@ export default function IndicatorsModal({
     const community = communitySections.find((s) => s.subcategory === activeSidebar);
     if (community) return [community];
     return [] as { label: string; items: CatalogEntry[] }[];
-  }, [activeSidebar, activeFundTab]);
+  }, [activeSidebar, activeFundTab, activeTechTab]);
 
   /* search filter */
   const filteredSections = useMemo(() => {
@@ -209,7 +213,38 @@ export default function IndicatorsModal({
                       <Sparkles size={28} className="mb-3 text-primary/60" />
                       <p className="text-sm font-medium text-foreground/80">Community Store</p>
                       <p className="mt-1 text-xs text-muted-foreground">Browse community-built indicators, strategies, and more.</p>
-                      <span className="mt-3 rounded-md bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase text-primary/70">Coming Soon</span>
+                    </div>
+                  ) : activeSidebar === 'technicals' && (activeTechTab === 'strategies' || activeTechTab === 'profiles') && !search.trim() ? (
+                    <div className="space-y-4">
+                      {/* Show tabs even on empty tabs */}
+                      <div className="flex gap-1.5 border-b border-primary/10 pb-3">
+                        {technicalsTabs.map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            data-testid={`tech-tab-${tab.id}`}
+                            onClick={() => setActiveTechTab(tab.id)}
+                            className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                              activeTechTab === tab.id
+                                ? 'bg-primary/15 text-primary'
+                                : 'text-muted-foreground hover:bg-primary/8 hover:text-foreground'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Lock size={28} className="mb-3 text-muted-foreground/60" />
+                        <p className="text-sm font-medium text-foreground/80">
+                          {activeTechTab === 'strategies' ? 'No strategies yet' : 'No profiles yet'}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {activeTechTab === 'strategies'
+                            ? 'Community strategies will appear here as they are added.'
+                            : 'Volume and session profiles will appear here as they are added.'}
+                        </p>
+                      </div>
                     </div>
                   ) : filteredSections.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -218,6 +253,27 @@ export default function IndicatorsModal({
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {/* Technicals sub-tabs */}
+                      {activeSidebar === 'technicals' && !search.trim() && (
+                        <div className="flex gap-1.5 border-b border-primary/10 pb-3">
+                          {technicalsTabs.map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              data-testid={`tech-tab-${tab.id}`}
+                              onClick={() => setActiveTechTab(tab.id)}
+                              className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                                activeTechTab === tab.id
+                                  ? 'bg-primary/15 text-primary'
+                                  : 'text-muted-foreground hover:bg-primary/8 hover:text-foreground'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Fundamentals sub-tabs */}
                       {activeSidebar === 'financials' && !search.trim() && (
                         <div className="flex gap-1.5 border-b border-primary/10 pb-3">
@@ -281,7 +337,6 @@ export default function IndicatorsModal({
                             <div className="grid gap-0.5">
                               {section.items.map((item) => {
                                 const isEnabled = enabledSet.has(item.id);
-                                const isBuiltin = builtinIds.has(item.id);
                                 return (
                                   <button
                                     key={item.id}
@@ -292,16 +347,11 @@ export default function IndicatorsModal({
                                       isEnabled
                                         ? 'bg-emerald-500/10 text-foreground'
                                         : 'text-foreground hover:bg-primary/8'
-                                    } ${!isBuiltin && !item.builtin ? 'opacity-60' : ''}`}
+                                    }`}
                                   >
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2">
                                         <span className="truncate text-[13px]">{item.name}</span>
-                                        {!isBuiltin && !item.builtin && (
-                                          <span className="shrink-0 rounded bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
-                                            Coming Soon
-                                          </span>
-                                        )}
                                       </div>
                                       {item.description && (
                                         <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.description}</div>
@@ -312,11 +362,11 @@ export default function IndicatorsModal({
                                         <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-400">
                                           <Check size={10} /> Active
                                         </span>
-                                      ) : isBuiltin ? (
+                                      ) : (
                                         <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary/70">
                                           Add
                                         </span>
-                                      ) : null}
+                                      )}
                                     </div>
                                   </button>
                                 );
