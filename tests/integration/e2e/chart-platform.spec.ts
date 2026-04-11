@@ -105,7 +105,7 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
 
   // Cursor menu parity
   await clickByTestId("rail-cursor");
-  await expect(page.locator('[data-testid="tool-menu-popover"]:visible').first()).toBeVisible();
+  await expect(page.locator('[data-testid="toolrail-popover"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="menu-cursor"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="cursor-cross"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="cursor-dot"]:visible').first()).toBeVisible();
@@ -130,12 +130,8 @@ test("chart platform types, tools, and object actions", async ({ page }) => {
   await expect(page.locator('[data-testid="fib-retracement"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="fib-extension"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="fib-channel"]:visible').first()).toBeVisible();
-
-  await clickByTestId("rail-gann");
-  await expect(page.locator('[data-testid="menu-gann"]:visible').first()).toBeVisible();
+  // Gann tools are now part of the Fibonacci + Gann combined menu
   await expect(page.locator('[data-testid="gann-box"]:visible').first()).toBeVisible();
-  await expect(page.locator('[data-testid="gann-square-fixed"]:visible').first()).toBeVisible();
-  await expect(page.locator('[data-testid="gann-square"]:visible').first()).toBeVisible();
   await expect(page.locator('[data-testid="gann-fan"]:visible').first()).toBeVisible();
 
   await clickByTestId("rail-patterns");

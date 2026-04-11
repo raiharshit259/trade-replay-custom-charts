@@ -87,6 +87,18 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [indicatorSearch, setIndicatorSearch] = useState('');
   const [highlightedResultIndex, setHighlightedResultIndex] = useState(0);
   const [enabledIndicators, setEnabledIndicators] = useState<string[]>([]);
+  const [keepDrawing, setKeepDrawing] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chart-keep-drawing') === 'true';
+  });
+  const [lockAll, setLockAll] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chart-lock-all') === 'true';
+  });
+  const [hideAll, setHideAll] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chart-hide-all') === 'true';
+  });
   const [treeOpen, setTreeOpen] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
     return !window.matchMedia('(max-width: 767px)').matches;
@@ -395,7 +407,154 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         ctx.lineWidth = activeDrawing.options.thickness;
         ctx.setLineDash(draft ? [6, 4] : activeDrawing.options.style === 'dashed' ? [6, 4] : activeDrawing.options.style === 'dotted' ? [2, 4] : []);
 
-        if (def.family === 'text') {
+        /* ── Variant-specific rendering ─────────────────────── */
+        const v = activeDrawing.variant;
+
+        if (v === 'hline' && points.length >= 1) {
+          ctx.beginPath();
+          ctx.moveTo(0, points[0].y);
+          ctx.lineTo(cssWidth, points[0].y);
+          ctx.stroke();
+        } else if (v === 'vline' && points.length >= 1) {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, 0);
+          ctx.lineTo(points[0].x, cssHeight);
+          ctx.stroke();
+        } else if (v === 'horizontalRay' && points.length >= 1) {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          ctx.lineTo(cssWidth, points[0].y);
+          ctx.stroke();
+        } else if (v === 'crossLine' && points.length >= 1) {
+          const p = points[0];
+          ctx.beginPath();
+          ctx.moveTo(0, p.y);
+          ctx.lineTo(cssWidth, p.y);
+          ctx.moveTo(p.x, 0);
+          ctx.lineTo(p.x, cssHeight);
+          ctx.stroke();
+        } else if (v === 'infoLine' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          const a1 = activeDrawing.anchors[0];
+          const a2 = activeDrawing.anchors[1];
+          const dp = a2.price - a1.price;
+          const pct = a1.price !== 0 ? ((dp / a1.price) * 100).toFixed(2) : '0.00';
+          const bars = Math.abs(Math.round((a2.time - a1.time) / 86400));
+          const info = `${dp >= 0 ? '+' : ''}${dp.toFixed(2)} (${pct}%) ${bars}b`;
+          drawText(ctx, activeDrawing, (p1.x + p2.x) / 2 + 4, (p1.y + p2.y) / 2 - 8, info);
+        } else if (v === 'trendAngle' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          const angle = Math.atan2(-(p2.y - p1.y), p2.x - p1.x) * (180 / Math.PI);
+          drawText(ctx, activeDrawing, p2.x + 6, p2.y - 8, `${angle.toFixed(1)}°`);
+        } else if (v === 'flatTopBottom' && points.length >= 2) {
+          const minY = Math.min(points[0].y, points[1].y);
+          const maxY = Math.max(points[0].y, points[1].y);
+          ctx.fillRect(0, minY, cssWidth, maxY - minY);
+          ctx.beginPath();
+          ctx.moveTo(0, points[0].y);
+          ctx.lineTo(cssWidth, points[0].y);
+          ctx.moveTo(0, points[1].y);
+          ctx.lineTo(cssWidth, points[1].y);
+          ctx.stroke();
+        } else if (v === 'disjointChannel' && points.length >= 2) {
+          ctx.beginPath();
+          ctx.moveTo(points[0].x, points[0].y);
+          ctx.lineTo(points[1].x, points[1].y);
+          if (points.length >= 4) {
+            ctx.moveTo(points[2].x, points[2].y);
+            ctx.lineTo(points[3].x, points[3].y);
+          }
+          ctx.stroke();
+          if (points.length >= 4) {
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            ctx.lineTo(points[1].x, points[1].y);
+            ctx.lineTo(points[3].x, points[3].y);
+            ctx.lineTo(points[2].x, points[2].y);
+            ctx.closePath();
+            ctx.fill();
+          }
+        } else if (v === 'regressionTrend' && points.length >= 2) {
+          const p1 = points[0];
+          const p2 = points[1];
+          const dy = p2.y - p1.y;
+          const offset = Math.abs(dy) * 0.25 || 20;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y - offset);
+          ctx.lineTo(p2.x, p2.y - offset);
+          ctx.moveTo(p1.x, p1.y + offset);
+          ctx.lineTo(p2.x, p2.y + offset);
+          ctx.stroke();
+          ctx.fillRect(Math.min(p1.x, p2.x), Math.min(p1.y - offset, p2.y - offset), Math.abs(p2.x - p1.x), Math.abs(dy) + offset * 2);
+          ctx.restore();
+        } else if (v === 'timeCycles' && points.length >= 2) {
+          const interval = Math.abs(points[1].x - points[0].x);
+          if (interval > 2) {
+            ctx.beginPath();
+            let x = points[0].x;
+            while (x <= cssWidth) { ctx.moveTo(x, 0); ctx.lineTo(x, cssHeight); x += interval; }
+            x = points[0].x - interval;
+            while (x >= 0) { ctx.moveTo(x, 0); ctx.lineTo(x, cssHeight); x -= interval; }
+            ctx.stroke();
+          }
+        } else if (v === 'sineLine' && points.length >= 2) {
+          const halfW = Math.abs(points[1].x - points[0].x);
+          const amp = points[1].y - points[0].y;
+          if (halfW > 2) {
+            ctx.beginPath();
+            const lo = Math.max(0, points[0].x - halfW * 10);
+            const hi = Math.min(cssWidth, points[0].x + halfW * 10);
+            let first = true;
+            for (let x = lo; x <= hi; x += 2) {
+              const phase = ((x - points[0].x) / halfW) * Math.PI;
+              const y = points[0].y + amp * Math.sin(phase);
+              if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+        } else if (v === 'fibSpeedResistArcs' && points.length >= 2) {
+          const dist = Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y);
+          const levels = def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          for (const level of levels) {
+            if (level === 0) continue;
+            const r = dist * level;
+            ctx.beginPath();
+            ctx.arc(points[0].x, points[0].y, r, 0, Math.PI * 2);
+            ctx.stroke();
+            if (activeDrawing.options.priceLabel) drawText(ctx, activeDrawing, points[0].x + r + 4, points[0].y - 4, `${(level * 100).toFixed(1)}%`);
+          }
+        } else if (v === 'pitchfan' && points.length >= 2) {
+          const levels = def.behaviors?.fibLevels || [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          const p1 = points[0];
+          const p2 = points[1];
+          const p3 = points[2] ?? p2;
+          ctx.beginPath();
+          for (const level of levels) {
+            const tx = p2.x + (p3.x - p2.x) * level;
+            const ty = p2.y + (p3.y - p2.y) * level;
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(tx, ty);
+          }
+          ctx.stroke();
+
+        /* ── Family-based fallback rendering ────────────────── */
+        } else if (def.family === 'text') {
           const text = activeDrawing.text || activeDrawing.variant;
           drawText(ctx, activeDrawing, points[0].x + 4, points[0].y - 4, text);
         } else if (def.family === 'shape') {
@@ -909,6 +1068,77 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     }, 'image/png');
   }, [chartContainerRef, overlayRef, symbol]);
 
+  /* ── Standalone rail tool callbacks ───────────────────────── */
+  const handleToggleMagnet = useCallback(() => {
+    setMagnetMode((prev) => {
+      const next = !prev;
+      window.localStorage.setItem('chart-magnet-mode', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleToggleKeepDrawing = useCallback(() => {
+    setKeepDrawing((prev) => {
+      const next = !prev;
+      window.localStorage.setItem('chart-keep-drawing', String(next));
+      return next;
+    });
+  }, []);
+
+  const handleToggleLockAll = useCallback(() => {
+    setLockAll((prev) => {
+      const next = !prev;
+      window.localStorage.setItem('chart-lock-all', String(next));
+      for (const d of drawingsRef.current) {
+        updateDrawing(d.id, (drawing) => ({ ...drawing, locked: next, options: { ...drawing.options, locked: next } }));
+      }
+      return next;
+    });
+  }, [drawingsRef, updateDrawing]);
+
+  const handleToggleHideAll = useCallback(() => {
+    setHideAll((prev) => {
+      const next = !prev;
+      window.localStorage.setItem('chart-hide-all', String(next));
+      for (const d of drawingsRef.current) {
+        updateDrawing(d.id, (drawing) => ({ ...drawing, visible: !next, options: { ...drawing.options, visible: !next } }));
+      }
+      renderOverlay();
+      return next;
+    });
+  }, [drawingsRef, renderOverlay, updateDrawing]);
+
+  const handleZoomIn = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const mid = (range.from + range.to) / 2;
+    const span = (range.to - range.from) * 0.4;
+    chart.timeScale().setVisibleLogicalRange({ from: mid - span, to: mid + span });
+  }, [chartRef]);
+
+  const handleZoomOut = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const mid = (range.from + range.to) / 2;
+    const span = (range.to - range.from) * 0.75;
+    chart.timeScale().setVisibleLogicalRange({ from: mid - span, to: mid + span });
+  }, [chartRef]);
+
+  const handleMeasure = useCallback(() => {
+    setVariant('priceRange' as any, 'forecasting');
+  }, [setVariant]);
+
+  const handleDelete = useCallback(() => {
+    if (selectedDrawingId) {
+      removeDrawing(selectedDrawingId);
+      setSelectedDrawingId(null);
+    }
+  }, [removeDrawing, selectedDrawingId]);
+
   return (
     <div className="relative flex h-full w-full min-h-[340px] flex-col">
       {/* Top bar + rail + chart in a flex layout */}
@@ -916,7 +1146,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
       <div className="flex min-h-0 flex-1">
         {/* Tool Rail — thin left icon bar */}
-        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} cursorMode={cursorMode} setCursorMode={setCursorMode} valuesTooltip={valuesTooltip} setValuesTooltip={setValuesTooltip} isMobile={isMobile} />
+        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} cursorMode={cursorMode} setCursorMode={setCursorMode} valuesTooltip={valuesTooltip} setValuesTooltip={setValuesTooltip} isMobile={isMobile} magnetMode={magnetMode} onToggleMagnet={handleToggleMagnet} keepDrawing={keepDrawing} onToggleKeepDrawing={handleToggleKeepDrawing} lockAll={lockAll} onToggleLockAll={handleToggleLockAll} hideAll={hideAll} onToggleHideAll={handleToggleHideAll} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut} onMeasure={handleMeasure} onDelete={handleDelete} />
 
         {/* Chart area — maximized */}
         <div className="flex min-w-0 flex-1 flex-col">

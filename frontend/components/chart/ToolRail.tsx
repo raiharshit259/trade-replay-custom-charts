@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   AlignHorizontalSpaceAround,
@@ -11,6 +12,8 @@ import {
   CornerRightUp,
   Crosshair,
   Eraser,
+  Eye,
+  EyeOff,
   Fan,
   Flag,
   GitFork,
@@ -18,6 +21,8 @@ import {
   Info,
   Layers,
   Layers3,
+  Lock,
+  Magnet,
   MessageCircle,
   MessageSquare,
   MessageSquareText,
@@ -34,11 +39,13 @@ import {
   Pin,
   Play,
   RectangleHorizontal,
+  Repeat,
   Ruler,
   SeparatorVertical,
   Sparkles,
   Square,
   Tag,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Triangle,
@@ -46,17 +53,18 @@ import {
   Unlink,
   Waves,
   ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { toolGroups, type CursorMode, type ToolCategory, type ToolGroup, type ToolGroupVariant, type ToolState, type ToolVariant } from '@/services/tools/toolRegistry';
 
 /* ── Icon map ───────────────────────────────────────────────── */
 const railIconMap: Record<string, React.ComponentType<any>> = {
   Activity, AlignHorizontalSpaceAround, ArrowDown, ArrowRight, ArrowUp, Box, Circle,
-  Clock3, CornerRightUp, Crosshair, Eraser, Fan, Flag, GitFork, GitMerge, Info,
-  Layers, Layers3, MessageCircle, MessageSquare, MessageSquareText, Minus, Mountain,
+  Clock3, CornerRightUp, Crosshair, Eraser, Eye, EyeOff, Fan, Flag, GitFork, GitMerge, Info,
+  Layers, Layers3, Lock, Magnet, MessageCircle, MessageSquare, MessageSquareText, Minus, Mountain,
   MousePointer, MousePointer2, Move3d, MoveHorizontal, MoveRight, Orbit, PencilLine,
-  Pin, Play, RectangleHorizontal, Ruler, SeparatorVertical, Sparkles, Square, Tag,
-  TrendingDown, TrendingUp, Triangle, Type, Unlink, Waves, ZoomIn,
+  Pin, Play, RectangleHorizontal, Repeat, Ruler, SeparatorVertical, Sparkles, Square, Tag,
+  Trash2, TrendingDown, TrendingUp, Triangle, Type, Unlink, Waves, ZoomIn, ZoomOut,
 };
 
 /* ── Cursor items (special menu) ────────────────────────────── */
@@ -114,6 +122,19 @@ type ToolRailProps = {
   valuesTooltip: boolean;
   setValuesTooltip: (value: boolean) => void;
   isMobile: boolean;
+  /* Standalone rail tools */
+  magnetMode: boolean;
+  onToggleMagnet: () => void;
+  keepDrawing: boolean;
+  onToggleKeepDrawing: () => void;
+  lockAll: boolean;
+  onToggleLockAll: () => void;
+  hideAll: boolean;
+  onToggleHideAll: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onMeasure: () => void;
+  onDelete: () => void;
 };
 
 export default function ToolRail({
@@ -126,14 +147,26 @@ export default function ToolRail({
   valuesTooltip,
   setValuesTooltip,
   isMobile,
+  magnetMode,
+  onToggleMagnet,
+  keepDrawing,
+  onToggleKeepDrawing,
+  lockAll,
+  onToggleLockAll,
+  hideAll,
+  onToggleHideAll,
+  onZoomIn,
+  onZoomOut,
+  onMeasure,
+  onDelete,
 }: ToolRailProps) {
   const railRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
+  const rafId = useRef<number | null>(null);
   const [submenuStyle, setSubmenuStyle] = useState<React.CSSProperties>({});
 
   const activeGroup = toolGroups.find((g) => g.id === expandedCategory) ?? null;
   const railGroups = toolGroups;
-  const overflowGroups = toolGroups;
 
   /* ── Position submenu anchored to rail button ─────────────── */
   const positionSubmenu = useCallback(() => {
@@ -142,23 +175,64 @@ export default function ToolRail({
     if (!btn) return;
     const btnRect = btn.getBoundingClientRect();
     const railRect = railRef.current.getBoundingClientRect();
+    const viewW = window.innerWidth;
     const viewH = window.innerHeight;
+    const menuW = submenuRef.current?.offsetWidth ?? 260;
+    const menuH = submenuRef.current?.offsetHeight ?? 280;
+    const cappedMenuH = Math.min(menuH, viewH - 16);
 
+    // Anchor vertically to the clicked button
     let top = btnRect.top;
-    if (top + 280 > viewH) top = Math.max(4, viewH - 400);
+    // Anchor horizontally to the right of the rail
+    let left = railRect.right + 2;
+
+    // If not enough space to the right, open to the left of the rail
+    if (left + menuW > viewW - 8) {
+      left = railRect.left - menuW - 2;
+    }
+
+    // Clamp within viewport
+    if (top + cappedMenuH > viewH - 8) top = Math.max(8, viewH - cappedMenuH - 8);
+    if (top < 8) top = 8;
+    if (left < 8) left = 8;
+    if (left + menuW > viewW - 8) left = Math.max(8, viewW - menuW - 8);
 
     setSubmenuStyle({
       position: 'fixed',
       top,
-      left: railRect.right + 2,
+      left,
+      maxHeight: cappedMenuH,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
       zIndex: 60,
     });
   }, [expandedCategory]);
 
   useEffect(() => {
     positionSubmenu();
-    window.addEventListener('resize', positionSubmenu);
-    return () => window.removeEventListener('resize', positionSubmenu);
+    const throttledPosition = () => {
+      if (rafId.current) return;
+      rafId.current = requestAnimationFrame(() => {
+        rafId.current = null;
+        positionSubmenu();
+      });
+    };
+    window.addEventListener('resize', throttledPosition);
+    window.addEventListener('scroll', throttledPosition, true);
+
+    let ro: ResizeObserver | undefined;
+    if (railRef.current) {
+      ro = new ResizeObserver(throttledPosition);
+      ro.observe(railRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', throttledPosition);
+      window.removeEventListener('scroll', throttledPosition, true);
+      ro?.disconnect();
+      if (rafId.current) cancelAnimationFrame(rafId.current);
+    };
   }, [positionSubmenu]);
 
   /* ── Close on outside click or ESC ────────────────────────── */
@@ -297,16 +371,7 @@ export default function ToolRail({
     </div>
   );
 
-  const renderMoreToolsMenu = () => (
-    <div className="space-y-2">
-      {overflowGroups.map((group) => (
-        <div key={group.id}>
-          <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">{group.label}</div>
-          {group.variants.map((variant) => renderVariant(variant, group))}
-        </div>
-      ))}
-    </div>
-  );
+  const renderMoreToolsMenu = () => null;
 
   return (
     <>
@@ -325,6 +390,7 @@ export default function ToolRail({
               key={group.id}
               type="button"
               data-testid={`rail-${group.id}`}
+              data-toolrail-button={group.id}
               data-rail-group={group.id}
               onClick={() => setExpandedCategory(isOpen ? null : group.id)}
               className={`flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${
@@ -337,44 +403,40 @@ export default function ToolRail({
               title={group.label}
             >
               <Icon size={18} />
+              <span className="sr-only" data-testid={`toolrail-button-${group.id}`} />
             </button>
           );
         })}
 
-        {overflowGroups.length > 0 ? <div className="my-0.5 h-px w-7 bg-border/40" /> : null}
-        {overflowGroups.length > 0 ? (
-          <button
-            type="button"
-            data-testid="rail-more-tools"
-            data-rail-group="system"
-            onClick={() => setExpandedCategory(expandedCategory === 'system' ? null : 'system')}
-            className={`mb-1 flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${
-              expandedCategory === 'system'
-                ? 'bg-primary/20 text-primary'
-                : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
-            }`}
-            title="More tools"
-          >
-            <MoreHorizontal size={18} />
-          </button>
-        ) : null}
+        {/* ── Standalone action tools ─────────────────────────── */}
+        <div className="my-1 h-px w-7 bg-border/40" />
+
+        <button type="button" data-testid="rail-measure" onClick={onMeasure} className="flex h-[36px] w-[36px] items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground" title="Measure"><Ruler size={18} /></button>
+        <button type="button" data-testid="rail-zoom-in" onClick={onZoomIn} className="flex h-[36px] w-[36px] items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground" title="Zoom in"><ZoomIn size={18} /></button>
+        <button type="button" data-testid="rail-zoom-out" onClick={onZoomOut} className="flex h-[36px] w-[36px] items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-foreground" title="Zoom out"><ZoomOut size={18} /></button>
+        <button type="button" data-testid="rail-magnet" onClick={onToggleMagnet} className={`flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${magnetMode ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`} title="Magnet"><Magnet size={18} /></button>
+        <button type="button" data-testid="rail-keep-drawing" onClick={onToggleKeepDrawing} className={`flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${keepDrawing ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`} title="Keep drawing"><Repeat size={18} /></button>
+        <button type="button" data-testid="rail-lock-drawings" onClick={onToggleLockAll} className={`flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${lockAll ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`} title="Lock all drawings"><Lock size={18} /></button>
+        <button type="button" data-testid="rail-hide-objects" onClick={onToggleHideAll} className={`flex h-[36px] w-[36px] items-center justify-center rounded-md transition ${hideAll ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'}`} title="Hide all drawings">{hideAll ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+        <button type="button" data-testid="rail-delete" onClick={onDelete} className="flex h-[36px] w-[36px] items-center justify-center rounded-md text-muted-foreground transition hover:bg-destructive/20 hover:text-destructive" title="Delete objects"><Trash2 size={18} /></button>
       </div>
 
-      {/* Floating popover anchored to rail icon */}
-      {expandedCategory && (
+      {/* Floating popover anchored to rail icon — portal to body to escape containing block from backdrop-filter */}
+      {expandedCategory && expandedCategory !== 'system' && createPortal(
         <div
           ref={submenuRef}
-          data-testid="tool-menu-popover"
+          data-testid="toolrail-popover"
           style={submenuStyle}
-          className="min-w-[220px] max-w-[280px] rounded-xl border border-primary/25 bg-background/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur-xl"
+          className="min-w-[220px] max-w-[280px] overflow-hidden rounded-xl border border-primary/25 bg-background/95 p-1.5 shadow-xl shadow-black/40 backdrop-blur-xl"
         >
-          <div data-testid={expandedCategory === 'cursor' ? 'menu-cursor' : expandedCategory === 'system' ? 'menu-more-tools' : `menu-${expandedCategory}`} className="mb-1 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
-            {expandedCategory === 'cursor' ? 'Cursor' : expandedCategory === 'system' ? 'More tools' : activeGroup?.label ?? ''}
+          <div data-testid={expandedCategory === 'cursor' ? 'menu-cursor' : `menu-${expandedCategory}`} className="mb-1 shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/70">
+            {expandedCategory === 'cursor' ? 'Cursor' : activeGroup?.label ?? ''}
           </div>
-          <div className="max-h-[60vh] space-y-0.5 overflow-y-auto">
-            {expandedCategory === 'cursor' ? renderCursorMenu() : expandedCategory === 'system' ? renderMoreToolsMenu() : renderSubmenuContent()}
+          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+            {expandedCategory === 'cursor' ? renderCursorMenu() : renderSubmenuContent()}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
