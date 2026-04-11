@@ -172,10 +172,10 @@ test("indicators modal: personal section shows placeholder", async ({ page }) =>
   await expect(modal).toBeVisible();
 
   await modal.getByTestId("indicators-sidebar-myScripts").click();
-  await expect(modal.getByText("Your personal scripts will appear here")).toBeVisible();
+  await expect(modal.getByText("No personal scripts yet")).toBeVisible();
 
   await modal.getByTestId("indicators-sidebar-inviteOnly").click();
-  await expect(modal.getByText("Invite-only scripts will appear here")).toBeVisible();
+  await expect(modal.getByText("No invite-only scripts here yet")).toBeVisible();
 
   await modal.getByTestId("indicators-modal-close").click();
 });

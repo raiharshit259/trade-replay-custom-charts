@@ -7,9 +7,11 @@ import {
   financialSections,
   communitySections,
   sidebarItems,
+  fundamentalsTabs,
   type CatalogEntry,
   type SidebarItem,
   type TechnicalSection,
+  type FundamentalsTab,
 } from '@/services/indicators/indicatorCatalog';
 
 /* ─── Props ─────────────────────────────────────────────────────────────── */
@@ -52,21 +54,26 @@ export default function IndicatorsModal({
   const [activeSidebar, setActiveSidebar] = useState('technicals');
   const [search, setSearch] = useState('');
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  const [activeFundTab, setActiveFundTab] = useState<FundamentalsTab>('financialsTab');
 
   const enabledSet = useMemo(() => new Set(enabledIndicators), [enabledIndicators]);
 
   /* collect entries for active sidebar item */
   const activeSections = useMemo(() => {
-    if (activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly') {
+    if (activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' || activeSidebar === 'purchased' || activeSidebar === 'store') {
       return [] as { label: string; items: CatalogEntry[] }[];
     }
     if (activeSidebar === 'technicals') return technicalSections;
-    if (activeSidebar === 'financials') return financialSections;
+    if (activeSidebar === 'financials') {
+      if (activeFundTab === 'financialsTab') return financialSections;
+      const tab = fundamentalsTabs.find((t) => t.id === activeFundTab);
+      return tab ? [{ label: tab.label, items: tab.items }] : financialSections;
+    }
     // community sub-items
     const community = communitySections.find((s) => s.subcategory === activeSidebar);
     if (community) return [community];
     return [] as { label: string; items: CatalogEntry[] }[];
-  }, [activeSidebar]);
+  }, [activeSidebar, activeFundTab]);
 
   /* search filter */
   const filteredSections = useMemo(() => {
@@ -109,7 +116,7 @@ export default function IndicatorsModal({
             <div className="flex shrink-0 items-center justify-between border-b border-primary/15 px-5 py-3">
               <div className="flex items-center gap-2">
                 <BarChart3 size={18} className="text-primary" />
-                <span className="text-sm font-semibold text-foreground">Indicators, Metrics & Strategies</span>
+                <span className="text-sm font-semibold text-foreground">Indicators, metrics, and strategies</span>
               </div>
               <button
                 type="button"
@@ -179,12 +186,30 @@ export default function IndicatorsModal({
               <div className="relative min-h-0 min-w-0 flex-1">
               <ScrollArea className="absolute inset-0">
                 <div className="p-4">
-                  {activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' ? (
+                  {activeSidebar === 'myScripts' || activeSidebar === 'inviteOnly' || activeSidebar === 'purchased' ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <Lock size={28} className="mb-3 text-muted-foreground/60" />
-                      <p className="text-sm text-muted-foreground">
-                        {activeSidebar === 'myScripts' ? 'Your personal scripts will appear here.' : 'Invite-only scripts will appear here.'}
+                      <p className="text-sm font-medium text-foreground/80">
+                        {activeSidebar === 'myScripts'
+                          ? 'No personal scripts yet'
+                          : activeSidebar === 'inviteOnly'
+                            ? 'No invite-only scripts here yet'
+                            : 'No purchased scripts yet'}
                       </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {activeSidebar === 'myScripts'
+                          ? 'Scripts you create will appear here.'
+                          : activeSidebar === 'inviteOnly'
+                            ? 'Scripts shared with you via invite will show up here.'
+                            : 'Discover scripts in the Store to add them here.'}
+                      </p>
+                    </div>
+                  ) : activeSidebar === 'store' ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <Sparkles size={28} className="mb-3 text-primary/60" />
+                      <p className="text-sm font-medium text-foreground/80">Community Store</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Browse community-built indicators, strategies, and more.</p>
+                      <span className="mt-3 rounded-md bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase text-primary/70">Coming Soon</span>
                     </div>
                   ) : filteredSections.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -193,6 +218,27 @@ export default function IndicatorsModal({
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      {/* Fundamentals sub-tabs */}
+                      {activeSidebar === 'financials' && !search.trim() && (
+                        <div className="flex gap-1.5 border-b border-primary/10 pb-3">
+                          {fundamentalsTabs.map((tab) => (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              data-testid={`fund-tab-${tab.id}`}
+                              onClick={() => setActiveFundTab(tab.id)}
+                              className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                                activeFundTab === tab.id
+                                  ? 'bg-primary/15 text-primary'
+                                  : 'text-muted-foreground hover:bg-primary/8 hover:text-foreground'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Active indicators summary */}
                       {enabledIndicators.length > 0 && !search.trim() && (
                         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">

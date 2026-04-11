@@ -383,13 +383,97 @@ export interface SidebarItem {
 }
 
 export const sidebarItems: SidebarItem[] = [
-  { id: 'myScripts', label: 'My Scripts', section: 'personal' },
-  { id: 'inviteOnly', label: 'Invite-Only', section: 'personal' },
+  { id: 'myScripts', label: 'My scripts', section: 'personal' },
+  { id: 'inviteOnly', label: 'Invite-only', section: 'personal' },
+  { id: 'purchased', label: 'Purchased', section: 'personal' },
   { id: 'technicals', label: 'Technicals', section: 'technicals' },
-  { id: 'financials', label: 'Financials', section: 'financials' },
-  { id: 'editorsPicks', label: "Editors' Picks", section: 'community' },
-  { id: 'topScripts', label: 'Top Scripts', section: 'community' },
+  { id: 'financials', label: 'Fundamentals', section: 'financials' },
+  { id: 'editorsPicks', label: "Editors' picks", section: 'community' },
+  { id: 'topScripts', label: 'Top', section: 'community' },
   { id: 'trending', label: 'Trending', section: 'community' },
+  { id: 'store', label: 'Store', section: 'community' },
+];
+
+// ─── Fundamentals sub-tabs ──────────────────────────────────────────────────
+
+export type FundamentalsTab = 'financialsTab' | 'network' | 'ownership' | 'social';
+
+export interface FundamentalsTabDef {
+  id: FundamentalsTab;
+  label: string;
+  items: CatalogEntry[];
+}
+
+export const fundamentalsTabs: FundamentalsTabDef[] = [
+  {
+    id: 'financialsTab',
+    label: 'Financials',
+    items: [
+      { id: 'fund_rvtRatio', name: 'RVT ratio, 90 days', builtin: false },
+      { id: 'fund_realizedMarketCap', name: 'Realized market cap', builtin: false },
+      { id: 'fund_supplyEqualityRatio', name: 'Supply equality ratio', builtin: false },
+      { id: 'fund_1yrActiveSupply', name: '1 year active supply %', builtin: false },
+    ],
+  },
+  {
+    id: 'network',
+    label: 'Network',
+    items: [
+      { id: 'fund_addressesWithBalance', name: 'Addresses with balance', builtin: false },
+      { id: 'fund_newFundedAddresses', name: 'New funded addresses', builtin: false },
+      { id: 'fund_activeAddresses', name: 'Active addresses', builtin: false },
+      { id: 'fund_txVolumeUsd', name: 'Transaction volume in USD', builtin: false },
+      { id: 'fund_txVolume', name: 'Transaction volume', builtin: false },
+      { id: 'fund_avgTxVolumeUsd', name: 'Average transaction volume in USD', builtin: false },
+      { id: 'fund_avgTxVolume', name: 'Average transaction volume', builtin: false },
+      { id: 'fund_txCount', name: 'Transaction count', builtin: false },
+      { id: 'fund_largeTxCount', name: 'Large transaction count', builtin: false },
+      { id: 'fund_largeTxVolumeUsd', name: 'Large transaction volume in USD', builtin: false },
+      { id: 'fund_largeTxVolume', name: 'Large transaction volume', builtin: false },
+      { id: 'fund_totalValueLocked', name: 'Total value locked', builtin: false },
+      { id: 'fund_txFeesUsd', name: 'Transaction fees in USD', builtin: false },
+      { id: 'fund_blockCount', name: 'Block count', builtin: false },
+      { id: 'fund_blockSizeMb', name: 'Block size in MB', builtin: false },
+      { id: 'fund_hashRate', name: 'Hash rate', builtin: false },
+      { id: 'fund_minerRevenueUsd', name: 'Miner revenue in USD', builtin: false },
+      { id: 'fund_avgTxFeeUsd', name: 'Average transaction fee in USD', builtin: false },
+      { id: 'fund_txPerBlock', name: 'Transaction per block', builtin: false },
+      { id: 'fund_difficulty', name: 'Difficulty', builtin: false },
+      { id: 'fund_mempoolSize', name: 'Mempool size', builtin: false },
+      { id: 'fund_mempoolTxCount', name: 'Mempool transaction count', builtin: false },
+      { id: 'fund_issuance', name: 'Issuance', builtin: false },
+    ],
+  },
+  {
+    id: 'ownership',
+    label: 'Ownership',
+    items: [
+      { id: 'fund_heldTokensUsd', name: 'Held tokens in addresses ≥ X (USD)', builtin: false },
+      { id: 'fund_heldTokens', name: 'Held tokens in addresses ≥ X (tokens)', builtin: false },
+      { id: 'fund_heldTokensSupply', name: 'Held tokens in addresses ≥ X (% of supply)', builtin: false },
+      { id: 'fund_addrBalanceUsd', name: 'Addresses with balance ≥ X (USD)', builtin: false },
+      { id: 'fund_addrBalanceSupply', name: 'Addresses with balance ≥ X (% of supply)', builtin: false },
+      { id: 'fund_etfBalancesUsd', name: 'US spot crypto ETF balances in USD', builtin: false },
+      { id: 'fund_etfBalances', name: 'US spot crypto ETF balances', builtin: false },
+      { id: 'fund_etfFlowsUsd', name: 'US spot crypto ETF flows in USD', builtin: false },
+      { id: 'fund_etfFlows', name: 'US spot crypto ETF flows', builtin: false },
+    ],
+  },
+  {
+    id: 'social',
+    label: 'Social',
+    items: [
+      { id: 'fund_altRank', name: 'AltRank', builtin: false },
+      { id: 'fund_galaxyScore', name: 'Galaxy score', builtin: false },
+      { id: 'fund_socialDominance', name: 'Social dominance %', builtin: false },
+      { id: 'fund_sentiment', name: 'Sentiment %', builtin: false },
+      { id: 'fund_interactions', name: 'Interactions', builtin: false },
+      { id: 'fund_activeContributors', name: 'Active contributors', builtin: false },
+      { id: 'fund_createdContributors', name: 'Created contributors', builtin: false },
+      { id: 'fund_activePosts', name: 'Active posts', builtin: false },
+      { id: 'fund_createdPosts', name: 'Created posts', builtin: false },
+    ],
+  },
 ];
 
 // ─── Flat lookup ────────────────────────────────────────────────────────────
@@ -397,6 +481,7 @@ export const sidebarItems: SidebarItem[] = [
 const _allCatalogEntries: CatalogEntry[] = [
   ...technicalSections.flatMap((s) => s.items),
   ...financialSections.flatMap((s) => s.items),
+  ...fundamentalsTabs.flatMap((t) => t.items),
   ...communitySections.flatMap((s) => s.items),
 ];
 
