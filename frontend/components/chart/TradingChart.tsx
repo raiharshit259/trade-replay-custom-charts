@@ -3,7 +3,7 @@ import type React from 'react';
 import { listIndicators, getGlobalPerfTelemetry } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
-import { getToolDefinition, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
+import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
 import { nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
 import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
@@ -68,7 +68,12 @@ function formatExportTimestamp(date: Date): string {
 export default function TradingChart({ data, visibleCount, symbol, mode = 'simulation' }: TradingChartProps) {
   const isMobile = useIsMobile();
   const [chartType, setChartType] = useState<ChartType>('candlestick');
-  const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('trend');
+  const [expandedCategory, setExpandedCategory] = useState<ToolCategory | null>('lines');
+  const [cursorMode, setCursorMode] = useState<CursorMode>('cross');
+  const [valuesTooltip, setValuesTooltip] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('chart-values-tooltip') === 'true';
+  });
   const [magnetMode, setMagnetMode] = useState(false);
   const [crosshairSnapMode, setCrosshairSnapMode] = useState<CrosshairSnapMode>(() => {
     if (typeof window === 'undefined') return 'free';
@@ -273,6 +278,14 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       // Ignore restricted storage environments.
     }
   }, [crosshairSnapMode]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('chart-values-tooltip', String(valuesTooltip));
+    } catch {
+      // Ignore restricted storage environments.
+    }
+  }, [valuesTooltip]);
 
   useEffect(() => {
     setHoverPoint(null);
@@ -711,6 +724,21 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     const point = pointerToDataPoint(event.clientX, event.clientY, crosshairSnapMode, magnetMode) || fallbackPoint();
     if (!point) return;
 
+    if (cursorMode === 'eraser' && toolState.variant === 'none') {
+      const visibleRange = getVisibleTimeRange();
+      const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
+      const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
+      const targetId = selectNearestDrawingId(candidates, point);
+      if (targetId) {
+        removeDrawing(targetId);
+        if (selectedDrawingId === targetId) {
+          setSelectedDrawingId(null);
+        }
+      }
+      renderOverlay();
+      return;
+    }
+
     if (toolState.variant === 'none') {
       const visibleRange = getVisibleTimeRange();
       const visibleIds = visibleRange
@@ -774,6 +802,16 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     updateDraft(point);
     renderOverlay();
   };
+
+  const cursorCssByMode: Record<CursorMode, string> = {
+    cross: 'crosshair',
+    dot: 'cell',
+    arrow: 'default',
+    demo: 'copy',
+    eraser: 'not-allowed',
+  };
+  const overlayInteractive = toolState.variant !== 'none' || cursorMode === 'eraser';
+  const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
 
   const onPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId);
@@ -878,7 +916,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
       <div className="flex min-h-0 flex-1">
         {/* Tool Rail — thin left icon bar */}
-        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} isMobile={isMobile} />
+        <ToolRail toolState={toolState} expandedCategory={expandedCategory} setExpandedCategory={setExpandedCategory} onVariant={(group, variant) => setVariant(variant, group)} cursorMode={cursorMode} setCursorMode={setCursorMode} valuesTooltip={valuesTooltip} setValuesTooltip={setValuesTooltip} isMobile={isMobile} />
 
         {/* Chart area — maximized */}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -894,7 +932,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             }}
           >
             <div className="chart-wrapper h-full w-full touch-pan-y">
-              <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
+              <ChartCanvas chartContainerRef={chartContainerRef} overlayRef={overlayRef} activeVariant={toolState.variant} overlayInteractive={overlayInteractive} overlayCursor={overlayCursor} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onContextMenu={(e) => e.preventDefault()} />
             </div>
 
             <ToolOptionsPanel open={optionsOpen} options={toolState.options} optionsSchema={activeDefinition?.optionsSchema || []} onChange={setOptions} />

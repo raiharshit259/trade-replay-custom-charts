@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Camera, ChevronDown, Magnet, Redo2, Undo2 } from 'lucide-react';
 import type { ChartType } from '@/services/chart/dataTransforms';
 import { chartTypeGroups, chartTypeLabels } from '@/services/chart/dataTransforms';
@@ -52,6 +53,8 @@ export default function ChartTopBar({
   selectedDrawingVariant,
   isMobile,
 }: ChartTopBarProps) {
+  const timeframeOptions = ['1m', '5m', '15m', '1h', '4h', '1D', '1W'] as const;
+  const [timeframe, setTimeframe] = useState<(typeof timeframeOptions)[number]>('1D');
   const allTypes = chartTypeGroups.flatMap((g) => g.types);
 
   return (
@@ -63,7 +66,7 @@ export default function ChartTopBar({
       <div className="relative" data-testid="charttype-dropdown">
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[12px] font-semibold text-foreground hover:bg-primary/10"
+          className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-[12px] font-semibold text-foreground shadow-sm hover:border-primary/40 hover:bg-primary/10"
           onClick={(e) => {
             const menu = e.currentTarget.nextElementSibling as HTMLElement;
             menu.classList.toggle('hidden');
@@ -72,7 +75,7 @@ export default function ChartTopBar({
           {chartTypeLabels[chartType]}
           <ChevronDown size={12} />
         </button>
-        <div className="absolute left-0 top-full z-[70] mt-1 hidden max-h-[70vh] w-[220px] overflow-y-auto rounded-xl border border-primary/25 bg-background/95 p-1 shadow-xl shadow-black/40 backdrop-blur-xl">
+        <div className="absolute left-0 top-full z-[70] mt-1 hidden max-h-[70vh] w-[220px] overflow-y-auto rounded-xl border border-primary/30 bg-background/98 p-1 shadow-xl shadow-black/50 backdrop-blur-xl">
           {chartTypeGroups.map((group) => (
             <div key={group.id}>
               <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{group.label}</div>
@@ -96,6 +99,39 @@ export default function ChartTopBar({
                 </button>
               ))}
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Timeframe dropdown */}
+      <div className="relative" data-testid="timeframe-dropdown">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-[12px] font-semibold text-foreground shadow-sm hover:border-primary/40 hover:bg-primary/10"
+          onClick={(e) => {
+            const menu = e.currentTarget.nextElementSibling as HTMLElement;
+            menu.classList.toggle('hidden');
+          }}
+        >
+          {timeframe}
+          <ChevronDown size={12} />
+        </button>
+        <div className="absolute left-0 top-full z-[70] mt-1 hidden w-[110px] rounded-xl border border-primary/30 bg-background/98 p-1 shadow-xl shadow-black/50 backdrop-blur-xl">
+          {timeframeOptions.map((option) => (
+            <button
+              key={option}
+              type="button"
+              data-testid={`timeframe-${option}`}
+              onClick={(e) => {
+                setTimeframe(option);
+                (e.currentTarget.closest('[data-testid="timeframe-dropdown"]')?.querySelector('.absolute') as HTMLElement)?.classList.add('hidden');
+              }}
+              className={`flex w-full rounded-md px-2.5 py-1.5 text-[12px] transition ${
+                timeframe === option ? 'bg-primary/20 font-semibold text-primary' : 'text-foreground hover:bg-primary/10'
+              }`}
+            >
+              {option}
+            </button>
           ))}
         </div>
       </div>
@@ -128,7 +164,7 @@ export default function ChartTopBar({
         <button
           type="button"
           data-testid="snap-dropdown"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+          className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-[11px] font-semibold text-foreground shadow-sm hover:border-primary/40 hover:bg-primary/10"
           onClick={(e) => {
             const menu = e.currentTarget.nextElementSibling as HTMLElement;
             menu.classList.toggle('hidden');
@@ -137,11 +173,12 @@ export default function ChartTopBar({
           Snap: {snapLabels[crosshairSnapMode]}
           <ChevronDown size={11} />
         </button>
-        <div className="absolute left-0 top-full z-[70] mt-1 hidden w-[130px] rounded-xl border border-primary/25 bg-background/95 p-1 shadow-xl shadow-black/40 backdrop-blur-xl">
+        <div className="absolute left-0 top-full z-[70] mt-1 hidden w-[130px] rounded-xl border border-primary/30 bg-background/98 p-1 shadow-xl shadow-black/50 backdrop-blur-xl">
           {(['free', 'time', 'ohlc'] as CrosshairSnapMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
+              data-testid={`snap-option-${mode}`}
               onClick={(e) => {
                 setCrosshairSnapMode(mode);
                 (e.currentTarget.closest('[data-testid="snap-dropdown-wrapper"]')?.querySelector('.absolute') as HTMLElement)?.classList.add('hidden');
