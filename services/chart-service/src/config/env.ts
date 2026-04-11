@@ -4,6 +4,10 @@ import { loadEnv } from "./loadEnv.js";
 const envStatus = loadEnv();
 const runtimeAppEnv = (process.env.APP_ENV ?? "local").toLowerCase();
 
+function defaultForLocal(localValue: string, nonLocalValue: string): string {
+  return runtimeAppEnv === "local" ? localValue : nonLocalValue;
+}
+
 function read(key: string, fallback: string): string {
   return process.env[key] ?? process.env[`LOCAL_${key}`] ?? fallback;
 }
@@ -27,9 +31,11 @@ function normalizeKafkaBrokers(brokers: string): string {
 export const env = {
   APP_ENV: read("APP_ENV", "local"),
   PORT: Number(read("CHART_SERVICE_PORT", "4010")),
+  REDIS_ENABLED: read("REDIS_ENABLED", defaultForLocal("false", "true")) === "true",
   REDIS_URL: normalizeRedis(read("REDIS_URL", "redis://127.0.0.1:6379")),
   DEV_ALLOW_MOCK_REDIS: read("DEV_ALLOW_MOCK_REDIS", "true") === "true",
   DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE: read("DEV_DISABLE_CACHE_IF_REDIS_UNAVAILABLE", "true") === "true",
+  DEV_DISABLE_KAFKA_IF_UNAVAILABLE: read("DEV_DISABLE_KAFKA_IF_UNAVAILABLE", defaultForLocal("true", "false")) === "true",
   MAIN_BACKEND_URL: read("MAIN_BACKEND_URL", "http://127.0.0.1:4000"),
   CHART_SERVICE_AUTH_ENABLED: read("CHART_SERVICE_AUTH_ENABLED", "false") === "true",
   CHART_SERVICE_AUTH_TOKEN: read("CHART_SERVICE_AUTH_TOKEN", ""),
@@ -39,7 +45,7 @@ export const env = {
   CHART_CACHE_SWR_SECONDS: Number(read("CHART_CACHE_SWR_SECONDS", "30")),
   CHART_CANDLE_SOURCE_PATH: read("CHART_CANDLE_SOURCE_PATH", "/api/live/candles"),
   CHART_SERVICE_TIMEOUT_MS: Number(read("CHART_SERVICE_TIMEOUT_MS", "5000")),
-  KAFKA_ENABLED: read("KAFKA_ENABLED", "false") === "true",
+  KAFKA_ENABLED: read("KAFKA_ENABLED", defaultForLocal("false", "false")) === "true",
   CHART_STREAMING_ENABLED: read("CHART_STREAMING_ENABLED", runtimeAppEnv === "production" ? "true" : "false") === "true",
   KAFKA_BROKERS: normalizeKafkaBrokers(read("KAFKA_BROKERS", "localhost:19092")),
   CHART_CANDLE_UPDATE_TOPIC: read("CHART_CANDLE_UPDATE_TOPIC", "chart.candle.updated"),

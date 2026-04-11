@@ -18,7 +18,8 @@
     "seed:portfolio-datasets": "tsx src/seeders/generatePortfolioDatasets.ts",
     "ingest:symbols": "tsx src/seeders/ingestSymbols.ts",
     "job:logo-validate": "tsx src/jobs/logoValidation.job.ts",
-    "job:logo-enrichment": "tsx src/jobs/logoValidation.job.ts"
+    "job:logo-enrichment": "tsx src/jobs/logoValidation.job.ts",
+    "test:degraded": "tsx tests/degraded-mode.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1025.0",

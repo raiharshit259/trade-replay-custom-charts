@@ -9,10 +9,12 @@ const REDIS_RETRY_DELAY_MS = 500;
 let hasLoggedRedisError = false;
 let hasLoggedRedisUnavailable = false;
 const useMockRedisInTest = (env.NODE_ENV === "test" || env.E2E) && env.E2E_USE_MOCK_REDIS;
+const useMockRedisByConfig = !env.REDIS_ENABLED && env.APP_ENV !== "production";
 const allowMockRedisFallback = (env.APP_ENV !== "production") && env.DEV_ALLOW_MOCK_REDIS;
-let useMockRedis = useMockRedisInTest;
+let useMockRedis = useMockRedisInTest || useMockRedisByConfig;
 let redisLastError: string | null = null;
 let hasLoggedMockMode = false;
+let redisDisableReason: string | null = useMockRedisByConfig ? "disabled_by_config" : null;
 
 function parseRedisUrl(url: string): RedisOptions {
   const parsed = new URL(url);
@@ -153,18 +155,24 @@ export function isRedisFallbackMode(): boolean {
 }
 
 export function getRedisHealthStatus(): {
+  enabledByConfig: boolean;
+  runtimeEnabled: boolean;
   ready: boolean;
   pubSubReady: boolean;
   fallback: "mock" | "external";
   degraded: boolean;
   lastError: string | null;
+  reason: string | null;
 } {
   return {
+    enabledByConfig: env.REDIS_ENABLED,
+    runtimeEnabled: env.REDIS_ENABLED || useMockRedis,
     ready: isRedisReady(),
     pubSubReady: isRedisPubSubReady(),
     fallback: useMockRedis ? "mock" : "external",
     degraded: useMockRedis,
     lastError: redisLastError,
+    reason: redisDisableReason,
   };
 }
 
@@ -185,7 +193,7 @@ export async function ensureRedisReady(): Promise<void> {
     if (!hasLoggedMockMode) {
       hasLoggedMockMode = true;
       logger.warn("redis_mock_enabled", {
-        reason: "test_or_fallback_mode",
+        reason: redisDisableReason ?? "test_or_fallback_mode",
       });
     }
     return;
@@ -221,6 +229,7 @@ export async function ensureRedisReady(): Promise<void> {
 
   if (allowMockRedisFallback) {
     useMockRedis = true;
+    redisDisableReason = "redis_unreachable_in_dev";
     redisConnectionOptions = parseRedisUrl("redis://127.0.0.1:6379");
     redisClient = createMockClient();
     redisPublisher = createMockClient();

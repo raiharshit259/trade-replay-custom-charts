@@ -14,16 +14,20 @@ let redisLastError: string | null = null;
 let redisErrorBurstCount = 0;
 let redisErrorBurstSince = Date.now();
 let redisLastSummaryLogAt = 0;
+let redisDisabledReason: string | null = null;
 
-function maybeLogRedisErrorSummary(errorMessage: string): void {
-  const now = Date.now();
+export function maybeLogRedisErrorSummary(
+  errorMessage: string,
+  now = Date.now(),
+  logFn: (message: string, payload?: Record<string, unknown>) => void = logWarn,
+): void {
   redisErrorBurstCount += 1;
 
   if (now - redisLastSummaryLogAt < 15_000) {
     return;
   }
 
-  logWarn("chart_service_redis_error_suppressed", {
+  logFn("chart_service_redis_error_suppressed", {
     error: errorMessage,
     attempts: redisErrorBurstCount,
     windowMs: now - redisErrorBurstSince,
@@ -44,6 +48,12 @@ function allowDevFallback(): boolean {
 }
 
 export async function connectRedis(): Promise<void> {
+  if (!env.REDIS_ENABLED) {
+    redisFallbackActive = true;
+    redisDisabledReason = "disabled_by_config";
+    return;
+  }
+
   try {
     if (redisClient.status !== "ready") {
       if (redisClient.status === "wait") {
@@ -72,15 +82,27 @@ export function isRedisFallbackActive(): boolean {
 }
 
 export function getRedisHealthStatus(): {
+  enabledByConfig: boolean;
+  runtimeEnabled: boolean;
   ready: boolean;
   fallback: "cache-disabled" | "external";
   degraded: boolean;
   lastError: string | null;
+  reason: string | null;
 } {
   return {
+    enabledByConfig: env.REDIS_ENABLED,
+    runtimeEnabled: env.REDIS_ENABLED,
     ready: isRedisReady(),
     fallback: redisFallbackActive ? "cache-disabled" : "external",
     degraded: redisFallbackActive,
     lastError: redisLastError,
+    reason: redisDisabledReason,
   };
+}
+
+export function resetRedisLogStateForTests(): void {
+  redisErrorBurstCount = 0;
+  redisErrorBurstSince = Date.now();
+  redisLastSummaryLogAt = 0;
 }

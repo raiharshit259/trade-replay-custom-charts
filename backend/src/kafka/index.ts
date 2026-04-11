@@ -15,6 +15,8 @@ type KafkaProbeResult = {
   reason?: string;
 };
 
+let hasLoggedKafkaAutoDisableSummary = false;
+
 function parseBrokerAddress(broker: string): { host: string; port: number } | null {
   const [hostRaw, portRaw] = broker.split(":");
   const host = hostRaw?.trim();
@@ -64,24 +66,62 @@ async function probeKafkaBrokers(timeoutMs = 750): Promise<KafkaProbeResult> {
   };
 }
 
+type KafkaPreflightOptions = {
+  probe?: () => Promise<KafkaProbeResult>;
+  onDisable?: (reason: string) => void;
+  logWarn?: (meta: { reason: string; broker?: string | null }) => void;
+};
+
+export async function preflightKafkaOrDisableForDev(options: KafkaPreflightOptions = {}): Promise<boolean> {
+  if (!isKafkaEnabled()) {
+    return false;
+  }
+
+  if (env.APP_ENV === "production" || !env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE) {
+    return true;
+  }
+
+  const probe = options.probe ?? (() => probeKafkaBrokers());
+  const result = await probe();
+  if (result.reachable) {
+    return true;
+  }
+
+  const reason = `kafka_unreachable_in_dev:${result.reason ?? "unknown"}`;
+  disableKafkaRuntime(reason);
+  if (options.onDisable) {
+    options.onDisable(reason);
+  }
+
+  if (!hasLoggedKafkaAutoDisableSummary) {
+    hasLoggedKafkaAutoDisableSummary = true;
+    if (options.logWarn) {
+      options.logWarn({ reason, broker: result.broker ?? null });
+    } else {
+      logger.warn("kafka_auto_disabled_for_dev", {
+        reason,
+        broker: result.broker ?? null,
+        strategy: "preflight_tcp_probe",
+      });
+    }
+  }
+
+  return false;
+}
+
+export function resetKafkaPreflightStateForTests(): void {
+  hasLoggedKafkaAutoDisableSummary = false;
+}
+
 export async function bootstrapKafkaProducerOnly(): Promise<void> {
   if (!isKafkaEnabled()) {
     logger.info("kafka_disabled");
     return;
   }
 
-  if (env.APP_ENV !== "production" && env.DEV_DISABLE_KAFKA_IF_UNAVAILABLE) {
-    const probe = await probeKafkaBrokers();
-    if (!probe.reachable) {
-      const reason = `kafka_unreachable_in_dev:${probe.reason ?? "unknown"}`;
-      disableKafkaRuntime(reason);
-      logger.warn("kafka_auto_disabled_for_dev", {
-        reason,
-        broker: probe.broker ?? null,
-        strategy: "preflight_tcp_probe",
-      });
-      return;
-    }
+  const preflightOk = await preflightKafkaOrDisableForDev();
+  if (!preflightOk) {
+    return;
   }
 
   try {

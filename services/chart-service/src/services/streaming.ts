@@ -1,8 +1,10 @@
 import { Kafka } from "kafkajs";
+import net from "node:net";
 import { kafkaConfig } from "../config/kafka";
 import { invalidateSymbolTimeframeCaches } from "./cache";
 import { incrementCounter } from "./metrics";
 import { logError, logInfo, logWarn } from "./logger";
+import { env } from "../config/env";
 
 type CandleUpdateEvent = {
   symbol?: string;
@@ -21,6 +23,9 @@ type KafkaEventEnvelope<T = unknown> = {
 const state = {
   connected: false,
   started: false,
+  runtimeDisabled: false,
+  runtimeDisableReason: null as string | null,
+  hasLoggedRuntimeDisableSummary: false,
   processedCount: 0,
   failedCount: 0,
   dlqCount: 0,
@@ -109,10 +114,12 @@ function updateFailureTelemetry(messageTime: string | null): void {
 }
 
 export function getStreamingHealth(): StreamingHealth {
-  const runtimeEnabled = kafkaConfig.enabled && kafkaConfig.streamingEnabled;
+  const runtimeEnabled = kafkaConfig.enabled && kafkaConfig.streamingEnabled && !state.runtimeDisabled;
   const disabledReason = !kafkaConfig.enabled
     ? "kafka_disabled"
-    : (!kafkaConfig.streamingEnabled ? "streaming_disabled_by_config" : null);
+    : (!kafkaConfig.streamingEnabled
+      ? "streaming_disabled_by_config"
+      : (state.runtimeDisableReason ?? null));
 
   return {
     enabled: kafkaConfig.enabled,
@@ -224,6 +231,9 @@ export async function handleKafkaMessageValue(rawValue: string, options: Process
 export function resetStreamingStateForTests(): void {
   state.connected = false;
   state.started = false;
+  state.runtimeDisabled = false;
+  state.runtimeDisableReason = null;
+  state.hasLoggedRuntimeDisableSummary = false;
   state.processedCount = 0;
   state.failedCount = 0;
   state.dlqCount = 0;
@@ -240,14 +250,118 @@ export function markStreamingFailureForTests(input: { messageTime?: string }): v
   updateFailureTelemetry(input.messageTime ?? null);
 }
 
+type StreamingPreflightResult = {
+  reachable: boolean;
+  broker?: string;
+  reason?: string;
+};
+
+function parseBrokerAddress(broker: string): { host: string; port: number } | null {
+  const [hostRaw, portRaw] = broker.split(":");
+  const host = hostRaw?.trim();
+  const port = Number(portRaw);
+  if (!host || !Number.isFinite(port) || port <= 0) {
+    return null;
+  }
+  return { host, port };
+}
+
+function probeBroker(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    let settled = false;
+
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.once("timeout", () => done(false));
+  });
+}
+
+async function probeKafkaBrokers(timeoutMs = 750): Promise<StreamingPreflightResult> {
+  const brokers = kafkaConfig.brokers;
+  if (brokers.length === 0) {
+    return { reachable: false, reason: "missing_broker_config" };
+  }
+
+  for (const broker of brokers) {
+    const parsed = parseBrokerAddress(broker);
+    if (!parsed) continue;
+    const reachable = await probeBroker(parsed.host, parsed.port, timeoutMs);
+    if (reachable) {
+      return { reachable: true, broker };
+    }
+  }
+
+  return { reachable: false, broker: brokers[0], reason: "tcp_connect_failed" };
+}
+
+type StreamingPreflightOptions = {
+  probe?: () => Promise<StreamingPreflightResult>;
+  logWarn?: (meta: { reason: string; broker?: string | null }) => void;
+};
+
+export async function preflightStreamingOrDisableForDev(options: StreamingPreflightOptions = {}): Promise<boolean> {
+  if (!kafkaConfig.enabled || !kafkaConfig.streamingEnabled) {
+    return false;
+  }
+
+  if (env.APP_ENV === "production" || !kafkaConfig.autoDisableWhenUnavailable) {
+    return true;
+  }
+
+  const probe = options.probe ?? (() => probeKafkaBrokers());
+  const result = await probe();
+  if (result.reachable) {
+    return true;
+  }
+
+  state.runtimeDisabled = true;
+  state.runtimeDisableReason = `kafka_unreachable_in_dev:${result.reason ?? "unknown"}`;
+  if (!state.hasLoggedRuntimeDisableSummary) {
+    state.hasLoggedRuntimeDisableSummary = true;
+    if (options.logWarn) {
+      options.logWarn({ reason: state.runtimeDisableReason, broker: result.broker ?? null });
+    } else {
+      logWarn("chart_streaming_auto_disabled_for_dev", {
+        reason: state.runtimeDisableReason,
+        broker: result.broker ?? null,
+        strategy: "preflight_tcp_probe",
+      });
+    }
+  }
+
+  return false;
+}
+
 export async function startStreaming(): Promise<(() => Promise<void>) | null> {
-  if (!kafkaConfig.enabled || !kafkaConfig.streamingEnabled || state.started) {
+  if (!kafkaConfig.enabled || !kafkaConfig.streamingEnabled || state.runtimeDisabled || state.started) {
     if (!state.started) {
       logInfo("chart_streaming_disabled", {
         kafkaEnabled: kafkaConfig.enabled,
         streamingEnabled: kafkaConfig.streamingEnabled,
+        runtimeDisabled: state.runtimeDisabled,
+        runtimeDisableReason: state.runtimeDisableReason,
       });
     }
+    return null;
+  }
+
+  const preflightOk = await preflightStreamingOrDisableForDev();
+  if (!preflightOk) {
+    logInfo("chart_streaming_disabled", {
+      kafkaEnabled: kafkaConfig.enabled,
+      streamingEnabled: kafkaConfig.streamingEnabled,
+      runtimeDisabled: state.runtimeDisabled,
+      runtimeDisableReason: state.runtimeDisableReason,
+    });
     return null;
   }
 

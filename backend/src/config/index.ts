@@ -38,6 +38,7 @@ function normalizeLocalEnv(): void {
   setIfMissing("REDIS_URL_LOCAL", localRedis);
   setIfMissing("REDIS_URL_DOCKER", localRedis);
   setIfMissing("REDIS_URL_PRODUCTION", localRedis);
+  setIfMissing("REDIS_ENABLED", process.env.LOCAL_REDIS_ENABLED ?? "false");
 
   setIfMissing("KAFKA_ENABLED", process.env.LOCAL_KAFKA_ENABLED ?? "false");
   setIfMissing("KAFKA_BROKER", localKafkaBrokers);
@@ -92,6 +93,7 @@ const EnvSchema = z.object({
   REDIS_URL_LOCAL: z.string().min(1),
   REDIS_URL_DOCKER: z.string().min(1),
   REDIS_URL_PRODUCTION: z.string().min(1),
+  REDIS_ENABLED: z.enum(["true", "false"]),
   KAFKA_ENABLED: z.enum(["true", "false"]),
   KAFKA_BROKER: z.string().min(1),
   KAFKA_BROKER_LOCAL: z.string().min(1),
@@ -237,6 +239,7 @@ export const CONFIG = {
   clientUrl: requiredEnv("CLIENT_URL"),
   mongoUri: envByAppMode("MONGO_URI"),
   redisUrl: envByAppMode("REDIS_URL"),
+  redisEnabled: booleanEnv("REDIS_ENABLED"),
   kafkaEnabled: booleanEnv("KAFKA_ENABLED"),
   kafkaBroker: (() => {
     const resolved = envByAppMode("KAFKA_BROKER");

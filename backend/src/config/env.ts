@@ -8,6 +8,7 @@ export const env = {
   CLIENT_URL: CONFIG.clientUrl,
   MONGO_URI: CONFIG.mongoUri,
   REDIS_URL: CONFIG.redisUrl,
+  REDIS_ENABLED: CONFIG.redisEnabled,
   KAFKA_ENABLED: CONFIG.kafkaEnabled,
   KAFKA_BROKERS: CONFIG.kafkaBroker,
   KAFKA_DEFAULT_PARTITIONS: CONFIG.kafkaDefaultPartitions,
