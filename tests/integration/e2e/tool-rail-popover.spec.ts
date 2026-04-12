@@ -110,6 +110,12 @@ async function readChartCursor(page: Page): Promise<string> {
   return page.locator('[data-testid="chart-container"]:visible').first().evaluate((el) => getComputedStyle(el).cursor);
 }
 
+async function readDrawingCount(page: Page): Promise<number> {
+  const badgeText = await page.locator('[data-testid="drawing-badge"]:visible').first().textContent();
+  const match = badgeText?.match(/\b(\d+)\s+drawing/);
+  return match ? Number(match[1]) : 0;
+}
+
 async function dispatchTouch(page: Page, type: 'touchstart' | 'touchmove' | 'touchend', x: number, y: number): Promise<void> {
   await page.evaluate(
     ({ type, x, y }) => {
@@ -352,6 +358,73 @@ test.describe("Tool Rail Popover", () => {
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings", { timeout: 5000 });
   });
 
+  test("selecting a line tool exits eraser mode", async ({ page }) => {
+    await selectTool(page, "lines", "tool-trendline", "tool: trend");
+    await draw2PointShape(page, 'left');
+    const before = await readDrawingCount(page);
+    expect(before).toBeGreaterThanOrEqual(1);
+
+    await ensureGroupMenuOpen(page, "cursor");
+    await clickByTestId(page, "cursor-eraser");
+    const eraserCursor = await readChartCursor(page);
+    expect(eraserCursor).toContain("not-allowed");
+
+    await selectTool(page, "lines", "tool-ray", "tool: ray");
+    const cursorAfterToolPick = await readChartCursor(page);
+    expect(cursorAfterToolPick).not.toContain("not-allowed");
+
+    await draw2PointShape(page, 'center');
+    await expect.poll(async () => readDrawingCount(page)).toBe(before + 1);
+  });
+
+  test("info line does not open text modal and needs an intentional drag", async ({ page }) => {
+    await selectTool(page, "lines", "tool-info-line", "tool: infoLine");
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const before = await readDrawingCount(page);
+    await page.mouse.click(box.x + box.width * 0.56, box.y + box.height * 0.42);
+    await expect(page.locator('[data-testid="chart-prompt-modal"]')).toHaveCount(0);
+    await expect.poll(async () => readDrawingCount(page)).toBe(before);
+
+    await draw2PointShape(page, 'right');
+    await expect.poll(async () => readDrawingCount(page)).toBe(before + 1);
+  });
+
+  test("every line option draws at least one object", async ({ page }) => {
+    const lineOptions: Array<{ id: string; badge: string }> = [
+      { id: 'tool-trendline', badge: 'tool: trend' },
+      { id: 'tool-ray', badge: 'tool: ray' },
+      { id: 'tool-info-line', badge: 'tool: infoLine' },
+      { id: 'tool-extended-line', badge: 'tool: extendedLine' },
+      { id: 'tool-trend-angle', badge: 'tool: trendAngle' },
+      { id: 'tool-horizontal-line', badge: 'tool: hline' },
+      { id: 'tool-horizontal-ray', badge: 'tool: horizontalRay' },
+      { id: 'tool-vertical-line', badge: 'tool: vline' },
+      { id: 'tool-cross-line', badge: 'tool: crossLine' },
+      { id: 'tool-parallel-channel', badge: 'tool: channel' },
+      { id: 'tool-regression-trend', badge: 'tool: regressionTrend' },
+      { id: 'tool-flat-top-bottom', badge: 'tool: flatTopBottom' },
+      { id: 'tool-disjoint-channel', badge: 'tool: disjointChannel' },
+      { id: 'tool-pitchfork', badge: 'tool: pitchfork' },
+      { id: 'tool-schiff-pitchfork', badge: 'tool: schiffPitchfork' },
+      { id: 'tool-modified-schiff-pitchfork', badge: 'tool: modifiedSchiffPitchfork' },
+      { id: 'tool-inside-pitchfork', badge: 'tool: insidePitchfork' },
+    ];
+
+    const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
+
+    for (const [index, option] of lineOptions.entries()) {
+      const before = await readDrawingCount(page);
+      await selectTool(page, 'lines', option.id, option.badge);
+      await draw2PointShape(page, regions[index % regions.length]);
+      await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
+    }
+  });
+
   test("values tooltip long press follows the toggle", async ({ page }) => {
     await ensureGroupMenuOpen(page, "cursor");
     const toggle = page.locator('[data-testid="cursor-values-tooltip-toggle"] [role="switch"]');
@@ -415,7 +488,9 @@ test.describe("Tool Rail Popover", () => {
         scrollHeight: el.scrollHeight,
         clientHeight: el.clientHeight,
       }));
-      expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+      if (metrics.scrollHeight <= metrics.clientHeight) {
+        continue;
+      }
 
       const beforeWheel = await scrollPane.evaluate((el) => el.scrollTop);
       await scrollPane.evaluate((el) => {

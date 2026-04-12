@@ -8,9 +8,11 @@ function preserveVariantIndependentOptions(options: ToolOptions): Partial<ToolOp
   return rest;
 }
 
+const MAX_HISTORY_ENTRIES = 180;
+
 function pushHistory(state: ToolState, drawings: Drawing[]): ToolState {
   const head = state.history.slice(0, state.historyIndex + 1);
-  const history = [...head, drawings];
+  const history = [...head, drawings].slice(-MAX_HISTORY_ENTRIES);
   return { ...state, drawings, history, historyIndex: history.length - 1 };
 }
 
@@ -33,6 +35,9 @@ export function useTools() {
   const optionsRef = useRef<ToolOptions>(defaultToolOptions);
 
   const setVariant = useCallback((variant: ToolVariant, activeTool: ToolState['activeTool']) => {
+    // Tool switches should always cancel an in-progress draft to avoid ghost commits.
+    draftRef.current = null;
+    drawingActiveRef.current = false;
     const nextVariant = variantRef.current === variant ? 'none' : variant;
     variantRef.current = nextVariant;
     setState((prev) => ({
@@ -57,9 +62,14 @@ export function useTools() {
     }));
   }, []);
 
-  const mutateDrawings = useCallback((updater: (prev: Drawing[]) => Drawing[]) => {
+  const mutateDrawings = useCallback((updater: (prev: Drawing[]) => Drawing[], commitHistory = true) => {
     const nextDrawings = updater(drawingsRef.current);
     drawingsRef.current = nextDrawings;
+
+    if (!commitHistory) {
+      setState((prev) => ({ ...prev, drawings: nextDrawings }));
+      return;
+    }
 
     setState((prev) => {
       const next = pushHistory(prev, nextDrawings);
@@ -103,8 +113,8 @@ export function useTools() {
     drawingActiveRef.current = false;
   }, []);
 
-  const updateDrawing = useCallback((id: string, updater: (drawing: Drawing) => Drawing) => {
-    mutateDrawings((prev) => prev.map((item) => (item.id === id ? updater(item) : item)));
+  const updateDrawing = useCallback((id: string, updater: (drawing: Drawing) => Drawing, commitHistory = true) => {
+    mutateDrawings((prev) => prev.map((item) => (item.id === id ? updater(item) : item)), commitHistory);
   }, [mutateDrawings]);
 
   const removeDrawing = useCallback((id: string) => {

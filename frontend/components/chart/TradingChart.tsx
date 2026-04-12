@@ -3,9 +3,9 @@ import type React from 'react';
 import { listIndicators, getGlobalPerfTelemetry } from '@tradereplay/charts';
 import type { CandleData } from '@/data/stockData';
 import { toTimestamp, type ChartType } from '@/services/chart/dataTransforms';
-import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory } from '@/services/tools/toolRegistry';
+import { getToolDefinition, type CursorMode, type DrawPoint, type Drawing, type ToolCategory, type ToolVariant } from '@/services/tools/toolRegistry';
 import { rgbFromHex } from '@/services/tools/toolOptions';
-import { nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
+import { isPointOnlyVariant, nearestCandleIndex, selectNearestDrawingId } from '@/services/tools/toolEngine';
 import { getParallelChannelGeometry, getPitchforkGeometry, getRaySegment, getRegressionTrendGeometry, snapTrendAngleSegment, type CanvasPoint, type PitchforkVariant } from '@/services/tools/drawingGeometry';
 import { DrawingTimeIndex } from '@/services/tools/drawingTimeIndex';
 import { useChart, type CrosshairSnapMode } from '@/hooks/useChart';
@@ -134,7 +134,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const [selectedIconPreset, setSelectedIconPreset] = useState<IconPresetSelection | null>(null);
   const [touchTooltip, setTouchTooltip] = useState<TouchTooltipState | null>(null);
   const pendingTextPointRef = useRef<DrawPoint | null>(null);
-  const pendingPointerEventRef = useRef<React.PointerEvent<HTMLCanvasElement> | null>(null);
+  const pendingTextVariantRef = useRef<Exclude<ToolVariant, 'none'> | null>(null);
+  const draftPointerStartRef = useRef<{ x: number; y: number; variant: Exclude<ToolVariant, 'none'> } | null>(null);
   const touchTooltipTimerRef = useRef<number | null>(null);
   const touchTooltipStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -251,10 +252,26 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     [drawingsRef, selectedDrawingId, toolState.drawings]
   );
 
+  const clearPromptState = useCallback(() => {
+    setPromptRequest(null);
+    pendingTextPointRef.current = null;
+    pendingTextVariantRef.current = null;
+    draftPointerStartRef.current = null;
+  }, []);
+
   const handleCursorModeSelect = useCallback((mode: CursorMode) => {
+    clearPromptState();
     setVariant('none', 'none');
     setCursorMode(mode);
-  }, [setCursorMode, setVariant]);
+  }, [clearPromptState, setCursorMode, setVariant]);
+
+  const handleVariantSelect = useCallback((group: ToolCategory, variant: ToolVariant) => {
+    clearPromptState();
+    if (variant !== 'none') {
+      setCursorMode((prev) => (prev === 'eraser' ? 'cross' : prev));
+    }
+    setVariant(variant, group);
+  }, [clearPromptState, setVariant]);
 
   const translateAnchors = useCallback((anchors: DrawPoint[], from: DrawPoint, to: DrawPoint) => {
     const deltaTime = to.time - from.time;
@@ -307,7 +324,13 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const updateHoverPoint = useCallback((clientX: number, clientY: number) => {
     const point = pointerToDataPoint(clientX, clientY, resolvePointerSnapMode(), false) ?? fallbackPoint();
-    setHoverPoint(point);
+    setHoverPoint((prev) => {
+      if (!point) return null;
+      if (!prev) return point;
+      const unchangedTime = Math.abs(Number(prev.time) - Number(point.time)) < 1;
+      const unchangedPrice = Math.abs(prev.price - point.price) < Math.max(0.01, Math.abs(point.price) * 0.0002);
+      return unchangedTime && unchangedPrice ? prev : point;
+    });
   }, [fallbackPoint, pointerToDataPoint, resolvePointerSnapMode]);
 
   useEffect(() => {
@@ -861,6 +884,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       if (!drawingActiveRef.current && !dragMoveRef.current) return;
       cancelDraft();
       dragMoveRef.current = null;
+      draftPointerStartRef.current = null;
       setDragAnchor(null);
       renderOverlay();
     };
@@ -990,14 +1014,16 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
 
   const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
     clearTouchTooltip();
-    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
-    if (!point) return;
+    draftPointerStartRef.current = null;
+    const freePoint = pointerToDataPoint(event.clientX, event.clientY, 'free', false) || fallbackPoint();
 
-    if (cursorMode === 'eraser') {
+    if (cursorMode === 'eraser' && toolState.variant === 'none') {
+      if (!freePoint) return;
+
       const visibleRange = getVisibleTimeRange();
       const visibleIds = visibleRange ? new Set(drawingIndexRef.current.query(visibleRange)) : null;
       const candidates = visibleIds ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id)) : drawingsRef.current;
-      const targetId = selectNearestDrawingId(candidates, point);
+      const targetId = selectNearestDrawingId(candidates, freePoint);
       if (targetId) {
         removeDrawing(targetId);
         if (selectedDrawingId === targetId) {
@@ -1009,6 +1035,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
     }
 
     if (toolState.variant === 'none') {
+      if (!freePoint) return;
       const visibleRange = getVisibleTimeRange();
       const visibleIds = visibleRange
         ? new Set(drawingIndexRef.current.query(visibleRange))
@@ -1017,28 +1044,34 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         ? drawingsRef.current.filter((drawing) => visibleIds.has(drawing.id))
         : drawingsRef.current;
 
-      const selected = selectNearestDrawingId(candidates, point);
+      const selected = selectNearestDrawingId(candidates, freePoint);
       setSelectedDrawingId(selected);
       if (selected) {
         const drawing = drawingsRef.current.find((item) => item.id === selected);
         if (drawing && !drawing.locked) {
-          const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - point.time) < 86400 && Math.abs(a.price - point.price) < Math.max(0.2, point.price * 0.02));
+          const idx = drawing.anchors.findIndex((a) => Math.abs(a.time - freePoint.time) < 86400 && Math.abs(a.price - freePoint.price) < Math.max(0.2, freePoint.price * 0.02));
           if (idx >= 0) {
             setDragAnchor({ drawingId: selected, anchorIndex: idx });
           } else {
-            dragMoveRef.current = { drawingId: selected, startPoint: point, currentPoint: point, originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })) };
+            dragMoveRef.current = { drawingId: selected, startPoint: freePoint, currentPoint: freePoint, originalAnchors: drawing.anchors.map((anchor) => ({ ...anchor })) };
           }
         }
       }
-      overlayRef.current?.setPointerCapture(event.pointerId);
+      if (event.currentTarget.setPointerCapture) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
       renderOverlay();
       return;
     }
 
-    const needsText = activeDefinition?.capabilities.supportsText && toolState.variant !== 'priceLabel';
+    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
+    if (!point) return;
+
+    const needsText = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText && toolState.variant !== 'priceLabel';
     if (needsText) {
       pendingTextPointRef.current = point;
       const variant = toolState.variant as Exclude<typeof toolState.variant, 'none'>;
+      pendingTextVariantRef.current = variant;
       const iconPreset = selectedIconPreset && selectedIconPreset.variant === variant ? selectedIconPreset : null;
       setPromptRequest(
         iconPreset
@@ -1052,20 +1085,33 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
       return;
     }
 
-    const text = activeDefinition?.capabilities.supportsText ? '' : undefined;
+    const text = activeDefinition?.family === 'text' && activeDefinition.capabilities.supportsText ? '' : undefined;
+    const activeVariant = toolState.variant as Exclude<ToolVariant, 'none'>;
+    if (!isPointOnlyVariant(activeVariant)) {
+      draftPointerStartRef.current = { x: event.clientX, y: event.clientY, variant: activeVariant };
+    }
     const result = startDraft(point, text);
     if (result.kind === 'finalized') {
+      draftPointerStartRef.current = null;
       const d = drawingsRef.current[drawingsRef.current.length - 1];
       if (d) setSelectedDrawingId(d.id);
     }
     renderOverlay();
-    overlayRef.current?.setPointerCapture(event.pointerId);
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
     updateHoverPoint(event.clientX, event.clientY);
-    
-    const point = pointerToDataPoint(event.clientX, event.clientY, resolvePointerSnapMode(), magnetMode) || fallbackPoint();
+
+    const shouldUseFreePointer = Boolean(dragMoveRef.current || dragAnchor);
+    const point = pointerToDataPoint(
+      event.clientX,
+      event.clientY,
+      shouldUseFreePointer ? 'free' : resolvePointerSnapMode(),
+      shouldUseFreePointer ? false : magnetMode,
+    ) || fallbackPoint();
     if (!point) return;
 
     if (dragMoveRef.current) {
@@ -1079,7 +1125,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         const next = [...drawing.anchors];
         next[dragAnchor.anchorIndex] = point;
         return { ...drawing, anchors: next };
-      });
+      }, false);
       renderOverlay();
       return;
     }
@@ -1100,7 +1146,9 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   const overlayCursor = toolState.variant !== 'none' ? undefined : cursorCssByMode[cursorMode];
 
   const onPointerUp = (event: React.PointerEvent<HTMLElement>) => {
-    if (overlayRef.current?.hasPointerCapture(event.pointerId)) overlayRef.current.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     if (dragMoveRef.current) {
       const move = dragMoveRef.current;
       const moved = drawingsRef.current.find((drawing) => drawing.id === move.drawingId);
@@ -1111,17 +1159,31 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
         }
       }
       dragMoveRef.current = null;
+      draftPointerStartRef.current = null;
       renderOverlay();
       return;
     }
 
     if (dragAnchor) {
+      updateDrawing(dragAnchor.drawingId, (drawing) => ({ ...drawing }));
       setDragAnchor(null);
+      draftPointerStartRef.current = null;
       renderOverlay();
       return;
     }
 
     const committed = finalizeDraft();
+    const start = draftPointerStartRef.current;
+    draftPointerStartRef.current = null;
+    if (committed && start && committed.variant === start.variant) {
+      const pointerDistance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+      if (pointerDistance < 3) {
+        removeDrawing(committed.id);
+        setSelectedDrawingId(null);
+        renderOverlay();
+        return;
+      }
+    }
     if (toolState.variant === 'zoom' && committed?.anchors[1]) {
       zoomToRange(committed.anchors[0].time, committed.anchors[1].time);
       removeDrawing(committed.id);
@@ -1257,8 +1319,8 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
   }, [chartRef]);
 
   const handleMeasure = useCallback(() => {
-    setVariant('priceRange' as any, 'forecasting');
-  }, [setVariant]);
+    handleVariantSelect('forecasting', 'priceRange');
+  }, [handleVariantSelect]);
 
   const handleDelete = useCallback(() => {
     if (selectedDrawingId) {
@@ -1278,7 +1340,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
           toolState={toolState}
           expandedCategory={expandedCategory}
           setExpandedCategory={setExpandedCategory}
-          onVariant={(group, variant) => setVariant(variant, group)}
+          onVariant={handleVariantSelect}
           selectedIconPreset={selectedIconPreset}
           onIconPresetSelect={setSelectedIconPreset}
           cursorMode={cursorMode}
@@ -1351,10 +1413,12 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
             <ChartPromptModal
               request={promptRequest}
               onConfirm={(val) => {
-                setPromptRequest(null);
                 const pt = pendingTextPointRef.current;
+                const pendingVariant = pendingTextVariantRef.current;
                 pendingTextPointRef.current = null;
-                if (pt) {
+                pendingTextVariantRef.current = null;
+                setPromptRequest(null);
+                if (pt && pendingVariant && toolState.variant === pendingVariant) {
                   const result = startDraft(pt, val);
                   if (result.kind === 'finalized') {
                     const d = drawingsRef.current[drawingsRef.current.length - 1];
@@ -1364,8 +1428,7 @@ export default function TradingChart({ data, visibleCount, symbol, mode = 'simul
                 }
               }}
               onCancel={() => {
-                setPromptRequest(null);
-                pendingTextPointRef.current = null;
+                clearPromptState();
               }}
             />
 
