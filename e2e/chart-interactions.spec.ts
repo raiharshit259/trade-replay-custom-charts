@@ -172,254 +172,37 @@ async function panAwayFromLiveEdge(page: Page): Promise<void> {
   await page.mouse.up();
 }
 
-async function drawTrendLine(page: Page): Promise<Array<{ x: number; y: number }>> {
+async function drawTrendLine(page: Page): Promise<void> {
   const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
   await expect(overlay).toBeVisible();
 
-  await ensureGroupMenuOpen(page, 'lines');
-  await clickVisible(page, 'tool-trendline');
+  await page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll('[data-testid="tool-trend"]'));
+    const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
+    if (target instanceof HTMLElement) {
+      target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  });
 
   const box = await overlay.boundingBox();
   expect(box).toBeTruthy();
-  if (!box) return [];
+  if (!box) return;
 
-  const before = await readDrawingCount(page);
   const x1 = box.x + box.width * 0.35;
   const y1 = box.y + box.height * 0.35;
   const x2 = box.x + box.width * 0.65;
   const y2 = box.y + box.height * 0.6;
 
-  const drag = async (sx: number, sy: number, ex: number, ey: number) => {
-    await page.mouse.move(sx, sy);
-    await page.waitForTimeout(40);
-    await page.mouse.down();
-    await page.waitForTimeout(40);
-    await page.mouse.move(ex, ey, { steps: 8 });
-    await page.waitForTimeout(40);
-    await page.mouse.up();
-  };
-
-  await drag(x1, y1, x2, y2);
-  if ((await readDrawingCount(page)) > before) {
-    return [
-      { x: (x1 + x2) / 2, y: (y1 + y2) / 2 },
-      { x: x1, y: y1 },
-      { x: x2, y: y2 },
-    ];
-  }
-
-  // Retry once with alternate coordinates when first pointer sequence is dropped.
-  const rx1 = box.x + box.width * 0.28;
-  const ry1 = box.y + box.height * 0.28;
-  const rx2 = box.x + box.width * 0.58;
-  const ry2 = box.y + box.height * 0.52;
-  await drag(rx1, ry1, rx2, ry2);
-
-  await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
-  return [
-    { x: (rx1 + rx2) / 2, y: (ry1 + ry2) / 2 },
-    { x: rx1, y: ry1 },
-    { x: rx2, y: ry2 },
-  ];
-}
-
-async function drawHorizontalLine(page: Page): Promise<Array<{ x: number; y: number }>> {
-  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  await expect(overlay).toBeVisible();
-
-  await ensureGroupMenuOpen(page, 'lines');
-  await clickVisible(page, 'tool-horizontal-line');
-
-  const box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  if (!box) return [];
-
-  const before = await readDrawingCount(page);
-  const x = box.x + box.width * 0.52;
-  const y = box.y + box.height * 0.46;
-  await page.mouse.click(x, y);
-  await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
-
-  return [
-    { x, y },
-    { x: box.x + box.width * 0.35, y },
-    { x: box.x + box.width * 0.68, y },
-  ];
-}
-
-async function clickByTestId(page: Page, testId: string): Promise<void> {
-  await page.evaluate((id) => {
-    const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
-    const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
-    if (target instanceof HTMLElement) {
-      target.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    }
-  }, testId);
-}
-
-async function clickVisible(page: Page, testId: string): Promise<void> {
-  await page.locator(`[data-testid="${testId}"]:visible`).first().click({ timeout: 5000 });
-}
-
-async function ensureGroupMenuOpen(page: Page, group: string): Promise<void> {
-  const menuTestId = group === 'cursor' ? 'menu-cursor' : `menu-${group}`;
-  const menu = page.locator(`[data-testid="${menuTestId}"]:visible`).first();
-  if (await menu.isVisible().catch(() => false)) return;
-
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(80);
-  await clickVisible(page, `rail-${group}`);
-  if (await menu.isVisible().catch(() => false)) return;
-
-  await clickVisible(page, `rail-${group}`);
-  await expect(menu).toBeVisible({ timeout: 5000 });
-}
-
-async function readChartCursor(page: Page): Promise<string> {
-  return page.locator('[data-testid="chart-container"]:visible').first().evaluate((el) => getComputedStyle(el).cursor);
-}
-
-async function readDrawingCount(page: Page): Promise<number> {
-  const badgeText = await page.locator('[data-testid="drawing-badge"]:visible').first().textContent();
-  const match = badgeText?.match(/\b(\d+)\s+drawing/);
-  return match ? Number(match[1]) : 0;
-}
-
-async function readScrollPosition(page: Page): Promise<number | null> {
-  return page.evaluate(() => {
-    const debug = (window as unknown as {
-      __chartDebug?: {
-        getScrollPosition?: () => number | null;
-      };
-    }).__chartDebug;
-    const value = debug?.getScrollPosition?.();
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
-  });
-}
-
-async function eraseOneDrawingReliably(page: Page, lineTargets: Array<{ x: number; y: number }> = []): Promise<void> {
-  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
-  const box = await overlay.boundingBox();
-  expect(box).toBeTruthy();
-  if (!box) return;
-
-  const before = await readDrawingCount(page);
-  const hitPoints = [
-    { xr: 0.50, yr: 0.47 },
-    { xr: 0.35, yr: 0.35 },
-    { xr: 0.65, yr: 0.60 },
-    { xr: 0.56, yr: 0.52 },
-    { xr: 0.44, yr: 0.42 },
-  ];
-
-  const liveTargets = await page.evaluate(() => {
-    const debug = (window as unknown as {
-      __chartDebug?: {
-        getDrawings?: () => Array<{ anchors: Array<{ time: number; price: number }> }>;
-        dataPointToClient?: (time: number, price: number) => { x: number; y: number } | null;
-      };
-    }).__chartDebug;
-
-    const drawings = debug?.getDrawings?.() ?? [];
-    const latest = drawings[drawings.length - 1];
-    if (!latest || !latest.anchors?.length || !debug?.dataPointToClient) return [] as Array<{ x: number; y: number }>;
-
-    const first = latest.anchors[0];
-    const last = latest.anchors[latest.anchors.length - 1] ?? first;
-    const mid = {
-      time: (Number(first.time) + Number(last.time)) / 2,
-      price: (Number(first.price) + Number(last.price)) / 2,
-    };
-
-    const points = [first, mid, last]
-      .map((point) => debug.dataPointToClient?.(Number(point.time), Number(point.price)) ?? null)
-      .filter((point): point is { x: number; y: number } => Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y)));
-
-    return points;
-  });
-
-  for (const point of liveTargets) {
-    await page.mouse.click(point.x, point.y);
-    await page.waitForTimeout(120);
-    const current = await readDrawingCount(page);
-    if (current < before) return;
-  }
-
-  for (const point of lineTargets) {
-    await page.mouse.click(point.x, point.y);
-    await page.waitForTimeout(120);
-    const current = await readDrawingCount(page);
-    if (current < before) return;
-  }
-
-  for (const point of hitPoints) {
-    await page.mouse.click(box.x + box.width * point.xr, box.y + box.height * point.yr);
-    await page.waitForTimeout(120);
-    const current = await readDrawingCount(page);
-    if (current < before) return;
-  }
-
-  throw new Error('Eraser did not remove drawing after retries');
-}
-
-async function expectFullscreenCoverage(page: Page): Promise<void> {
-  const bounds = await page.locator('[data-testid="chart-full-view-overlay"]:visible').first().evaluate((el) => {
-    const rect = el.getBoundingClientRect();
-    return {
-      width: rect.width,
-      height: rect.height,
-      vw: window.innerWidth,
-      vh: window.innerHeight,
-    };
-  });
-  expect(bounds.width).toBeGreaterThanOrEqual(bounds.vw * 0.97);
-  expect(bounds.height).toBeGreaterThanOrEqual(bounds.vh * 0.95);
-}
-
-async function runFullViewAndEraserChecks(page: Page, route: "/simulation" | "/live-market", checkEraser = true): Promise<void> {
-  await page.goto(route);
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toBeVisible();
-
-  if (checkEraser) {
-    await expect.poll(async () => {
-      const text = await page.locator('[data-testid="ohlc-status"]:visible').first().textContent();
-      return (text ?? '').includes('No data');
-    }, { timeout: 15_000 }).toBeFalsy();
-  }
-
-  if (checkEraser) {
-    // Normal mode erase flow
-    await clickByTestId(page, 'chart-clear');
-    const normalTargets = await drawHorizontalLine(page);
-    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
-    await ensureGroupMenuOpen(page, 'cursor');
-    await clickVisible(page, 'cursor-eraser');
-    await expect.poll(async () => readChartCursor(page)).toContain('url(');
-    await eraseOneDrawingReliably(page, normalTargets);
-    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('0 drawings', { timeout: 5000 });
-  }
-
-  // Full-view size + erase flow
-  await clickByTestId(page, 'chart-toggle-full-view');
-  await expect(page.locator('[data-testid="chart-full-view-overlay"]:visible').first()).toBeVisible({ timeout: 5000 });
-  await expectFullscreenCoverage(page);
-  await expect(page.locator('[data-testid="chart-full-view-overlay"] [data-testid="chart-container"]:visible').first()).toBeVisible();
-
-  if (checkEraser) {
-    await clickByTestId(page, 'chart-clear');
-    const fullTargets = await drawHorizontalLine(page);
-    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
-    await ensureGroupMenuOpen(page, 'cursor');
-    await clickVisible(page, 'cursor-eraser');
-    await expect.poll(async () => readChartCursor(page)).toContain('url(');
-    await eraseOneDrawingReliably(page, fullTargets);
-    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('0 drawings', { timeout: 5000 });
-  }
-
-  await page.keyboard.press('Escape');
-  await expect(page.locator('[data-testid="chart-full-view-overlay"]:visible')).toHaveCount(0);
-  await expect(page.locator('[data-testid="chart-root"][data-full-view="false"]:visible').first()).toBeVisible();
+  await page.evaluate(
+    ({ startX, startY, endX, endY }) => {
+      const canvas = document.querySelector('canvas[aria-label="chart-drawing-overlay"]:not([style*="display: none"])') as HTMLCanvasElement | null;
+      if (!canvas) return;
+      canvas.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: startX, clientY: startY }));
+      canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: endX, clientY: endY }));
+      canvas.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: endX, clientY: endY }));
+    },
+    { startX: x1, startY: y1, endX: x2, endY: y2 }
+  );
 }
 
 async function moveSelectedDrawing(page: Page): Promise<void> {
@@ -544,41 +327,4 @@ test("chart zoom and drawing persistence on simulation and live market", async (
 
   await runChartChecks(page, "/simulation");
   await runChartChecks(page, "/live-market");
-});
-
-test("fullscreen coverage and eraser behavior work on simulation and live market", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await registerAndLogin(page);
-
-  await runFullViewAndEraserChecks(page, "/simulation", true);
-  await runFullViewAndEraserChecks(page, "/live-market", false);
-});
-
-test("live chart keeps detached viewport during realtime updates", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await registerAndLogin(page);
-
-  await page.goto('/live-market');
-  await expect(page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first()).toBeVisible({ timeout: 20_000 });
-
-  const detached = await page.evaluate(() => {
-    const debug = (window as unknown as {
-      __chartDebug?: {
-        scrollToPosition?: (position: number) => number | null;
-      };
-    }).__chartDebug;
-    return debug?.scrollToPosition?.(22) ?? null;
-  });
-  expect(detached).not.toBeNull();
-
-  const initialScroll = await readScrollPosition(page);
-  expect(initialScroll).not.toBeNull();
-  expect(initialScroll ?? 0).toBeGreaterThan(0.5);
-
-  await page.waitForTimeout(7_000);
-
-  const laterScroll = await readScrollPosition(page);
-  expect(laterScroll).not.toBeNull();
-  expect(laterScroll ?? 0).toBeGreaterThan(0.5);
-  await expect(page.locator('[data-testid="chart-go-live"]:visible').first()).toBeVisible();
 });

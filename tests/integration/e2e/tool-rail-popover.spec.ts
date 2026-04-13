@@ -46,8 +46,11 @@ async function clickVisible(page: Page, testId: string): Promise<void> {
 
 async function clickByTestId(page: Page, testId: string): Promise<void> {
   await page.evaluate((id) => {
-    const el = document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
-    if (el) el.click();
+    const nodes = Array.from(document.querySelectorAll(`[data-testid="${id}"]`));
+    const target = nodes.find((node) => node instanceof HTMLElement && node.offsetParent !== null) ?? nodes[0];
+    if (target instanceof HTMLElement) {
+      target.click();
+    }
   }, testId);
 }
 
@@ -57,9 +60,14 @@ async function ensureGroupMenuOpen(page: Page, group: string): Promise<void> {
 
   if (await menu.isVisible().catch(() => false)) return;
 
-  // Dismiss any portal-rendered popover that might intercept clicks
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(100);
+  const inFullView = (await page.locator('[data-testid="chart-root"][data-full-view="true"]:visible').count()) > 0;
+
+  // Dismiss any portal-rendered popover that might intercept clicks.
+  // Avoid Escape in fullscreen because it closes full-view mode.
+  if (!inFullView) {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(100);
+  }
 
   await clickVisible(page, `rail-${group}`);
   if (await menu.isVisible().catch(() => false)) return;
@@ -116,6 +124,12 @@ async function readDrawingCount(page: Page): Promise<number> {
   return match ? Number(match[1]) : 0;
 }
 
+async function readCursorPriceLabel(page: Page): Promise<string> {
+  const status = await page.locator('[data-testid="ohlc-status"]:visible').first().textContent();
+  const match = status?.match(/Cursor\s+([\d.\-]+)/i);
+  return match?.[1] ?? '';
+}
+
 async function readDrawingAnchors(page: Page, index = 0): Promise<Array<{ time: number; price: number }>> {
   return page.evaluate((targetIndex) => {
     const debug = (window as unknown as { __chartDebug?: { getDrawings?: () => Array<{ anchors: Array<{ time: number; price: number }> }> } }).__chartDebug;
@@ -123,6 +137,23 @@ async function readDrawingAnchors(page: Page, index = 0): Promise<Array<{ time: 
     const drawing = drawings[targetIndex];
     return drawing?.anchors?.map((anchor) => ({ time: Number(anchor.time), price: Number(anchor.price) })) ?? [];
   }, index);
+}
+
+async function readLatestDrawing(page: Page): Promise<{ text?: string; options?: Record<string, unknown>; anchors: Array<{ time: number; price: number }> }> {
+  return page.evaluate(() => {
+    const debug = (window as unknown as {
+      __chartDebug?: {
+        getDrawings?: () => Array<{ text?: string; options?: Record<string, unknown>; anchors: Array<{ time: number; price: number }> }>;
+      };
+    }).__chartDebug;
+    const drawings = debug?.getDrawings?.() ?? [];
+    const drawing = drawings[drawings.length - 1];
+    return {
+      text: drawing?.text,
+      options: drawing?.options,
+      anchors: drawing?.anchors?.map((anchor) => ({ time: Number(anchor.time), price: Number(anchor.price) })) ?? [],
+    };
+  });
 }
 
 async function drawAt(page: Page, start: { x: number; y: number }, end: { x: number; y: number }): Promise<void> {
@@ -151,6 +182,23 @@ async function confirmPromptIfVisible(page: Page): Promise<void> {
     await modal.getByTestId('chart-prompt-ok').click();
     await expect(page.locator('[data-testid="chart-prompt-modal"]:visible')).toHaveCount(0);
   }
+}
+
+async function placeWizardTool(page: Page, anchorCount: number, region: 'left' | 'center' | 'right' = 'center'): Promise<void> {
+  const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+  const box = await overlay.boundingBox();
+  expect(box).toBeTruthy();
+  if (!box) return;
+
+  const regionOffsets = { left: 0.08, center: 0.28, right: 0.58 };
+  const baseX = regionOffsets[region];
+  for (let i = 0; i < anchorCount; i += 1) {
+    const x = box.x + box.width * (baseX + 0.04 * i);
+    const y = box.y + box.height * (0.30 + (i % 2 === 0 ? 0 : 0.18));
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(60);
+  }
+  await page.waitForTimeout(200);
 }
 
 async function placeCurrentTool(page: Page, pointOnly = false, region: 'left' | 'center' | 'right' = 'center'): Promise<void> {
@@ -300,8 +348,24 @@ test.describe("Tool Rail Popover", () => {
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("2 drawing");
 
     await selectTool(page, "patterns", "tool-xabcd", "tool: xabcd");
-    await draw2PointShape(page, 'right');
-    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("3 drawing");
+    const patternOverlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const patternBox = await patternOverlay.boundingBox();
+    expect(patternBox).toBeTruthy();
+    if (!patternBox) return;
+
+    const points = [
+      { x: patternBox.x + patternBox.width * 0.69, y: patternBox.y + patternBox.height * 0.30 },
+      { x: patternBox.x + patternBox.width * 0.75, y: patternBox.y + patternBox.height * 0.51 },
+      { x: patternBox.x + patternBox.width * 0.80, y: patternBox.y + patternBox.height * 0.34 },
+      { x: patternBox.x + patternBox.width * 0.86, y: patternBox.y + patternBox.height * 0.55 },
+      { x: patternBox.x + patternBox.width * 0.91, y: patternBox.y + patternBox.height * 0.39 },
+    ];
+    for (const point of points) {
+      await page.mouse.click(point.x, point.y);
+      await page.waitForTimeout(60);
+    }
+
+    await expect.poll(async () => readDrawingCount(page)).toBe(3);
 
     await ensureGroupMenuOpen(page, "cursor");
     await clickByTestId(page, "cursor-eraser");
@@ -356,6 +420,17 @@ test.describe("Tool Rail Popover", () => {
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("tool: priceRange", { timeout: 3000 });
   });
 
+  test("drawing tools default to snap-off for smooth placement", async ({ page }) => {
+    await selectTool(page, "lines", "tool-trendline", "tool: trend");
+
+    const snapMode = await page.evaluate(() => {
+      const debug = (window as unknown as { __chartDebug?: { getToolOptions?: () => { snapMode?: string } } }).__chartDebug;
+      return debug?.getToolOptions?.().snapMode ?? null;
+    });
+
+    expect(snapMode).toBe('off');
+  });
+
   test("cursor menu changes the chart cursor surface", async ({ page }) => {
     await ensureGroupMenuOpen(page, "cursor");
     const chartCursor = async () => readChartCursor(page);
@@ -373,6 +448,17 @@ test.describe("Tool Rail Popover", () => {
     await clickByTestId(page, "cursor-arrow");
     await expect.poll(chartCursor).toBe("default");
 
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const cursorPriceBefore = await readCursorPriceLabel(page);
+    await page.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.25);
+    await page.waitForTimeout(120);
+    const cursorPriceAfter = await readCursorPriceLabel(page);
+    expect(cursorPriceAfter).toBe(cursorPriceBefore);
+
     await ensureGroupMenuOpen(page, "cursor");
     await clickByTestId(page, "cursor-demo");
     const demoCursor = await chartCursor();
@@ -381,7 +467,7 @@ test.describe("Tool Rail Popover", () => {
     await ensureGroupMenuOpen(page, "cursor");
     await clickByTestId(page, "cursor-eraser");
     const eraserCursor = await chartCursor();
-    expect(eraserCursor).not.toEqual("default");
+    expect(eraserCursor).toContain("url(");
   });
 
   test("eraser removes a line by hitting the body", async ({ page }) => {
@@ -404,6 +490,59 @@ test.describe("Tool Rail Popover", () => {
     await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText("0 drawings", { timeout: 5000 });
   });
 
+  test("eraser removes text tools by clicking their rendered area", async ({ page }) => {
+    await selectTool(page, 'text', 'tool-anchoredText', 'tool: anchoredText');
+    await placeCurrentTool(page, true);
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
+
+    await ensureGroupMenuOpen(page, 'cursor');
+    await clickByTestId(page, 'cursor-eraser');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    await page.mouse.move(box.x + box.width * 0.53, box.y + box.height * 0.44);
+    await page.mouse.click(box.x + box.width * 0.53, box.y + box.height * 0.44);
+
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('0 drawings', { timeout: 5000 });
+  });
+
+  test("eraser removes line, ray, and text in normal and full view", async ({ page }) => {
+    const drawAndErase = async (toolGroup: string, toolId: string, badge: string, pointOnly = false) => {
+      await selectTool(page, toolGroup, toolId, badge);
+      await placeCurrentTool(page, pointOnly);
+      const beforeErase = await readDrawingCount(page);
+      expect(beforeErase).toBeGreaterThan(0);
+
+      await ensureGroupMenuOpen(page, 'cursor');
+      await clickByTestId(page, 'cursor-eraser');
+
+      const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+      const box = await overlay.boundingBox();
+      expect(box).toBeTruthy();
+      if (!box) return;
+
+      await page.mouse.click(box.x + box.width * 0.52, box.y + box.height * 0.46);
+      await expect.poll(async () => readDrawingCount(page)).toBeLessThan(beforeErase);
+    };
+
+    await drawAndErase('lines', 'tool-trendline', 'tool: trend');
+    await drawAndErase('lines', 'tool-ray', 'tool: ray');
+    await drawAndErase('text', 'tool-anchoredText', 'tool: anchoredText', true);
+
+    await clickVisible(page, 'chart-toggle-full-view');
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="true"]:visible').first()).toBeVisible();
+
+    await drawAndErase('lines', 'tool-trendline', 'tool: trend');
+    await drawAndErase('lines', 'tool-ray', 'tool: ray');
+    await drawAndErase('text', 'tool-anchoredText', 'tool: anchoredText', true);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="true"]:visible')).toHaveCount(0);
+  });
+
   test("selecting a line tool exits eraser mode", async ({ page }) => {
     await selectTool(page, "lines", "tool-trendline", "tool: trend");
     await draw2PointShape(page, 'left');
@@ -413,14 +552,75 @@ test.describe("Tool Rail Popover", () => {
     await ensureGroupMenuOpen(page, "cursor");
     await clickByTestId(page, "cursor-eraser");
     const eraserCursor = await readChartCursor(page);
-    expect(eraserCursor).toContain("not-allowed");
+    expect(eraserCursor).toContain("url(");
 
     await selectTool(page, "lines", "tool-ray", "tool: ray");
     const cursorAfterToolPick = await readChartCursor(page);
-    expect(cursorAfterToolPick).not.toContain("not-allowed");
+    expect(cursorAfterToolPick).toContain("crosshair");
 
     await draw2PointShape(page, 'center');
     await expect.poll(async () => readDrawingCount(page)).toBe(before + 1);
+  });
+
+  test("chart full-view toggle opens and closes workspace mode", async ({ page }) => {
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="true"]:visible')).toHaveCount(0);
+
+    await clickVisible(page, 'chart-toggle-full-view');
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="true"]:visible').first()).toBeVisible();
+    await expect(page.locator('[data-testid="chart-container"]:visible').first()).toBeVisible();
+
+    const fullscreenBounds = await page.locator('[data-testid="chart-full-view-overlay"]:visible').first().evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height,
+        vw: window.innerWidth,
+        vh: window.innerHeight,
+      };
+    });
+    expect(fullscreenBounds.width).toBeGreaterThanOrEqual(fullscreenBounds.vw * 0.97);
+    expect(fullscreenBounds.height).toBeGreaterThanOrEqual(fullscreenBounds.vh * 0.95);
+
+    // Left rail popover remains visible and actionable in full view.
+    await ensureGroupMenuOpen(page, 'lines');
+    await expect(page.locator('[data-testid="toolrail-popover"]:visible').first()).toBeVisible();
+    await expect(page.locator('[data-testid="tool-trendline"]:visible').first()).toBeVisible();
+
+    // Top bar dropdown still opens in full view.
+    await clickVisible(page, 'timeframe-current');
+    await expect(page.locator('[data-testid="interval-1"]:visible').first()).toBeVisible();
+    await clickVisible(page, 'timeframe-current');
+
+    // Custom interval modal must render above the fullscreen overlay.
+    await clickVisible(page, 'timeframe-current');
+    await clickVisible(page, 'custom-interval-btn');
+    await expect(page.locator('[data-testid="custom-interval-modal"]:visible').first()).toBeVisible();
+    await clickVisible(page, 'custom-interval-close');
+    await expect(page.locator('[data-testid="custom-interval-modal"]:visible')).toHaveCount(0);
+
+    // Tool options panel should open/close from top bar.
+    await clickVisible(page, 'chart-options-toggle');
+    await expect(page.locator('[data-testid="tool-options-panel"]:visible').first()).toBeVisible();
+    await clickVisible(page, 'chart-options-toggle');
+    await expect(page.locator('[data-testid="tool-options-panel"]:visible')).toHaveCount(0);
+
+    // Object tree panel toggle should still work in full view.
+    const treePanel = page.locator('[data-testid="object-tree-panel"]:visible').first();
+    const treeOpenBefore = (await treePanel.getAttribute('data-open')) === 'true';
+    await clickVisible(page, 'chart-objects-toggle');
+    await expect(treePanel).toHaveAttribute('data-open', treeOpenBefore ? 'false' : 'true');
+    await clickVisible(page, 'chart-objects-toggle');
+    await expect(treePanel).toHaveAttribute('data-open', treeOpenBefore ? 'true' : 'false');
+
+    // Indicators modal should remain visible and closable in full view.
+    await clickVisible(page, 'indicators-button');
+    await expect(page.locator('[data-testid="indicators-modal"]:visible').first()).toBeVisible();
+    await clickByTestId(page, 'indicators-button');
+    await expect(page.locator('[data-testid="indicators-modal"]:visible')).toHaveCount(0);
+
+    await clickVisible(page, 'chart-toggle-full-view');
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="true"]:visible')).toHaveCount(0);
+    await expect(page.locator('[data-testid="chart-root"][data-full-view="false"]:visible').first()).toBeVisible();
   });
 
   test("info line does not open text modal and needs an intentional drag", async ({ page }) => {
@@ -499,31 +699,80 @@ test.describe("Tool Rail Popover", () => {
     }
   });
 
+  test("fib retracement supports custom levels and label mode options", async ({ page }) => {
+    await selectTool(page, 'fib', 'fib-retracement', 'tool: fibRetracement');
+    await draw2PointShape(page, 'center');
+    await expect(page.locator('[data-testid="drawing-badge"]:visible').first()).toContainText('1 drawing');
+
+    await clickVisible(page, 'chart-options-toggle');
+    await page.locator('[data-testid="tool-option-fibLevels"]:visible').first().fill('0,0.5,1,1.618');
+    await page.locator('[data-testid="tool-option-fibLabelMode"]:visible').first().selectOption('both');
+
+    const latest = await readLatestDrawing(page);
+    expect(latest.options?.fibLevels).toBe('0,0.5,1,1.618');
+    expect(latest.options?.fibLabelMode).toBe('both');
+  });
+
   test("pattern panel variants draw with expected bindings", async ({ page }) => {
-    const patternOptions: Array<{ id: string; badge: string }> = [
-      { id: 'tool-xabcd', badge: 'tool: xabcd' },
-      { id: 'tool-cypherPattern', badge: 'tool: cypherPattern' },
-      { id: 'tool-headAndShoulders', badge: 'tool: headAndShoulders' },
-      { id: 'tool-abcdPattern', badge: 'tool: abcdPattern' },
-      { id: 'tool-trianglePattern', badge: 'tool: trianglePattern' },
-      { id: 'tool-threeDrives', badge: 'tool: threeDrives' },
-      { id: 'tool-elliottImpulse', badge: 'tool: elliottImpulse' },
-      { id: 'tool-elliottCorrection', badge: 'tool: elliottCorrection' },
-      { id: 'tool-elliottTriangle', badge: 'tool: elliottTriangle' },
-      { id: 'tool-elliottDoubleCombo', badge: 'tool: elliottDoubleCombo' },
-      { id: 'tool-elliottTripleCombo', badge: 'tool: elliottTripleCombo' },
-      { id: 'tool-cyclicLines', badge: 'tool: cyclicLines' },
-      { id: 'tool-timeCycles', badge: 'tool: timeCycles' },
-      { id: 'tool-sineLine', badge: 'tool: sineLine' },
+    const patternOptions: Array<{ id: string; badge: string; anchors: number }> = [
+      { id: 'tool-xabcd', badge: 'tool: xabcd', anchors: 5 },
+      { id: 'tool-cypherPattern', badge: 'tool: cypherPattern', anchors: 5 },
+      { id: 'tool-headAndShoulders', badge: 'tool: headAndShoulders', anchors: 5 },
+      { id: 'tool-abcdPattern', badge: 'tool: abcdPattern', anchors: 4 },
+      { id: 'tool-trianglePattern', badge: 'tool: trianglePattern', anchors: 3 },
+      { id: 'tool-threeDrives', badge: 'tool: threeDrives', anchors: 7 },
+      { id: 'tool-elliottImpulse', badge: 'tool: elliottImpulse', anchors: 5 },
+      { id: 'tool-elliottCorrection', badge: 'tool: elliottCorrection', anchors: 3 },
+      { id: 'tool-elliottTriangle', badge: 'tool: elliottTriangle', anchors: 5 },
+      { id: 'tool-elliottDoubleCombo', badge: 'tool: elliottDoubleCombo', anchors: 3 },
+      { id: 'tool-elliottTripleCombo', badge: 'tool: elliottTripleCombo', anchors: 5 },
+      { id: 'tool-cyclicLines', badge: 'tool: cyclicLines', anchors: 2 },
+      { id: 'tool-timeCycles', badge: 'tool: timeCycles', anchors: 2 },
+      { id: 'tool-sineLine', badge: 'tool: sineLine', anchors: 2 },
     ];
 
     const regions: Array<'left' | 'center' | 'right'> = ['left', 'center', 'right'];
     for (const [index, option] of patternOptions.entries()) {
       const before = await readDrawingCount(page);
       await selectTool(page, 'patterns', option.id, option.badge);
-      await placeCurrentTool(page, false, regions[index % regions.length]);
+      if (option.anchors > 2) {
+        await placeWizardTool(page, option.anchors, regions[index % regions.length]);
+      } else {
+        await placeCurrentTool(page, false, regions[index % regions.length]);
+      }
       await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
     }
+  });
+
+  test("pattern tools guide point-by-point wizard flow", async ({ page }) => {
+    await selectTool(page, 'patterns', 'tool-xabcd', 'tool: xabcd');
+    const before = await readDrawingCount(page);
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const points = [
+      { x: box.x + box.width * 0.22, y: box.y + box.height * 0.34 },
+      { x: box.x + box.width * 0.34, y: box.y + box.height * 0.54 },
+      { x: box.x + box.width * 0.47, y: box.y + box.height * 0.38 },
+      { x: box.x + box.width * 0.62, y: box.y + box.height * 0.57 },
+      { x: box.x + box.width * 0.76, y: box.y + box.height * 0.42 },
+    ];
+
+    await page.mouse.click(points[0].x, points[0].y);
+    await expect(page.locator('[data-testid="pattern-wizard-hint"]:visible').first()).toContainText('(2/5)');
+    await expect.poll(async () => readDrawingCount(page)).toBe(before);
+
+    for (let i = 1; i < points.length - 1; i += 1) {
+      await page.mouse.click(points[i].x, points[i].y);
+      await expect.poll(async () => readDrawingCount(page)).toBe(before);
+    }
+
+    await page.mouse.click(points[points.length - 1].x, points[points.length - 1].y);
+    await expect.poll(async () => readDrawingCount(page)).toBe(before + 1);
+    await expect(page.locator('[data-testid="pattern-wizard-hint"]:visible')).toHaveCount(0);
   });
 
   test("forecasting and volume tools draw and remain interactive", async ({ page }) => {
@@ -549,6 +798,29 @@ test.describe("Tool Rail Popover", () => {
       await placeCurrentTool(page, Boolean(option.pointOnly), regions[index % regions.length]);
       await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
     }
+  });
+
+  test("position and anchored VWAP options expose advanced controls", async ({ page }) => {
+    await selectTool(page, 'forecasting', 'tool-longPosition', 'tool: longPosition');
+    await draw2PointShape(page, 'center');
+
+    const positionDrawing = await readLatestDrawing(page);
+    expect(positionDrawing.anchors.length).toBe(3);
+
+    await clickVisible(page, 'chart-options-toggle');
+    await page.locator('[data-testid="tool-option-positionLabelMode"]:visible').first().selectOption('both');
+    const updatedPosition = await readLatestDrawing(page);
+    expect(updatedPosition.options?.positionLabelMode).toBe('both');
+    await clickVisible(page, 'chart-options-toggle');
+
+    await selectTool(page, 'forecasting', 'tool-anchoredVwap', 'tool: anchoredVwap');
+    await drawPointTool(page, 0.44, 0.46);
+    await clickVisible(page, 'chart-options-toggle');
+    await expect(page.locator('[data-testid="tool-options-panel"]:visible').first()).toBeVisible();
+    await page.locator('[data-testid="tool-option-vwapInterval"]:visible').first().selectOption('week');
+
+    const vwapDrawing = await readLatestDrawing(page);
+    expect(vwapDrawing.options?.vwapInterval).toBe('week');
   });
 
   test("brush panel variants draw correctly", async ({ page }) => {
@@ -580,6 +852,43 @@ test.describe("Tool Rail Popover", () => {
     }
   });
 
+  test("brush workflow captures smooth freeform anchor trails", async ({ page }) => {
+    await selectTool(page, 'brush', 'tool-brush', 'tool: brush');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const startX = box.x + box.width * 0.2;
+    const startY = box.y + box.height * 0.35;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    for (let step = 1; step <= 18; step += 1) {
+      const x = startX + box.width * 0.028 * step;
+      const y = startY + Math.sin(step / 2.2) * 14;
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(12);
+    }
+    await page.mouse.up();
+
+    const drawing = await readLatestDrawing(page);
+    expect(drawing.anchors.length).toBeGreaterThanOrEqual(2);
+
+    await clickVisible(page, 'chart-options-toggle');
+    const smoothnessSlider = page.locator('[data-testid="tool-option-brushSmoothness"]:visible').first();
+    await smoothnessSlider.focus();
+    for (let step = 0; step < 10; step += 1) {
+      await smoothnessSlider.press('ArrowRight');
+    }
+
+    const brushSmoothness = await page.evaluate(() => {
+      const debug = (window as unknown as { __chartDebug?: { getToolOptions?: () => { brushSmoothness?: number } } }).__chartDebug;
+      return Number(debug?.getToolOptions?.().brushSmoothness ?? 0);
+    });
+    expect(brushSmoothness).toBeGreaterThan(0.85);
+  });
+
   test("text panel variants open prompt where needed and create objects", async ({ page }) => {
     const options: Array<{ id: string; badge: string }> = [
       { id: 'tool-plainText', badge: 'tool: plainText' },
@@ -604,6 +913,29 @@ test.describe("Tool Rail Popover", () => {
       await placeCurrentTool(page, true);
       await expect.poll(async () => readDrawingCount(page)).toBeGreaterThan(before);
     }
+  });
+
+  test("text prompt style controls and in-place edit are functional", async ({ page }) => {
+    await selectTool(page, 'text', 'tool-anchoredText', 'tool: anchoredText');
+
+    const overlay = page.locator('canvas[aria-label="chart-drawing-overlay"]:visible').first();
+    const box = await overlay.boundingBox();
+    expect(box).toBeTruthy();
+    if (!box) return;
+
+    const placeX = box.x + box.width * 0.52;
+    const placeY = box.y + box.height * 0.44;
+    await page.mouse.click(placeX, placeY);
+
+    const createModal = page.locator('[data-testid="chart-prompt-modal"]:visible').first();
+    await expect(createModal).toBeVisible();
+    const createInput = page.locator('[data-testid="chart-prompt-input"]:visible').first();
+    await createInput.fill('Alpha setup');
+    await expect(createInput).toHaveValue('Alpha setup');
+    await createModal.locator('select').first().selectOption('Poppins');
+    await createModal.locator('button', { hasText: 'Bold' }).click();
+    await createModal.getByTestId('chart-prompt-ok').click();
+    await expect(page.locator('[data-testid="chart-prompt-modal"]:visible')).toHaveCount(0);
   });
 
   test("icon tabs place emoji, sticker, and symbol drawings", async ({ page }) => {

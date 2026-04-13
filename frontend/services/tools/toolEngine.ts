@@ -3,6 +3,11 @@ import { buildToolOptions, getToolDefinition, type DrawPoint, type Drawing, type
 import type { ToolOptions } from './toolOptions.ts';
 import { interpolateDrawPoint } from './drawingGeometry.ts';
 
+export function isWizardVariant(variant: ToolVariant): boolean {
+  const definition = getToolDefinition(variant);
+  return Boolean(definition && definition.family === 'pattern' && definition.capabilities.anchors > 2);
+}
+
 export function makeId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -63,13 +68,44 @@ export function createDrawing(variant: Exclude<ToolVariant, 'none'>, options: To
   };
 }
 
-export function updateDraftDrawing(draft: Drawing, point: DrawPoint): Drawing {
-  if (draft.variant === 'brush') {
+export function updateDraftDrawing(draft: Drawing, point: DrawPoint, activeAnchorIndex?: number): Drawing {
+  if (isWizardVariant(draft.variant)) {
+    const anchors = [...draft.anchors];
+    const targetIndex = Math.max(1, Math.min(anchors.length - 1, activeAnchorIndex ?? anchors.length - 1));
+    anchors[targetIndex] = point;
+    for (let index = targetIndex + 1; index < anchors.length; index += 1) {
+      anchors[index] = point;
+    }
+    return { ...draft, anchors };
+  }
+
+  if (draft.variant === 'brush' || draft.variant === 'highlighter') {
     const last = draft.anchors[draft.anchors.length - 1];
-    if (last && Math.abs(last.time - point.time) === 0 && Math.abs(last.price - point.price) < 0.0001) {
+    const smoothness = Math.max(0, Math.min(1, Number(draft.options.brushSmoothness) || 0));
+    const minTimeDelta = Math.max(0.5, smoothness * 2.2);
+    const minPriceDelta = Math.max(0.00005, Math.abs(point.price) * (0.00001 + smoothness * 0.00006));
+
+    if (
+      last
+      && Math.abs(last.time - point.time) < minTimeDelta
+      && Math.abs(last.price - point.price) < minPriceDelta
+    ) {
       return draft;
     }
     return { ...draft, anchors: [...draft.anchors, point] };
+  }
+
+  const definition = getToolDefinition(draft.variant);
+  if (definition?.family === 'position' && draft.anchors.length >= 3) {
+    const entry = draft.anchors[0];
+    const mirrored = {
+      time: point.time,
+      price: entry.price - (point.price - entry.price),
+    };
+    return {
+      ...draft,
+      anchors: [entry, { time: point.time, price: point.price }, mirrored],
+    };
   }
 
   const anchors = [...draft.anchors];
@@ -88,6 +124,7 @@ export function updateDraftDrawing(draft: Drawing, point: DrawPoint): Drawing {
 }
 
 type NormalizedPoint = { x: number; y: number };
+type SelectionIntent = 'select' | 'erase';
 
 function normalizePoint(point: DrawPoint, timeScale: number, priceScale: number): NormalizedPoint {
   return {
@@ -368,10 +405,39 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
   }
 
   if (definition?.family === 'text') {
-    return distance(normalizedPoint, anchors[0]);
+    const anchor = anchors[0];
+    const text = (drawing.text && drawing.text.trim()) || drawing.variant;
+    const fontSize = Math.max(10, Number(drawing.options.textSize) || 14);
+    const pad = Math.max(3, Number(drawing.options.textPadding) || 4);
+    const approxWidthPx = Math.max(fontSize * 0.9, text.length * fontSize * 0.58);
+    const align = drawing.options.align ?? 'left';
+    const anchorX = anchor.x + 4 / timeScale;
+    const anchorY = anchor.y - 4 / priceScale;
+    let leftX = anchorX;
+    if (align === 'center') {
+      leftX -= (approxWidthPx / 2) / timeScale;
+    } else if (align === 'right') {
+      leftX -= approxWidthPx / timeScale;
+    }
+    const topY = anchorY - (fontSize + pad) / priceScale;
+    const rightX = leftX + (approxWidthPx + pad * 2) / timeScale;
+    const bottomY = anchorY + pad / priceScale;
+    const boxScore = pointToRectDistance(normalizedPoint, { x: leftX, y: topY }, { x: rightX, y: bottomY });
+    return Math.min(boxScore, distance(normalizedPoint, anchor));
   }
 
-  if ((definition?.family === 'shape' || definition?.family === 'position' || definition?.family === 'measure') && a && b) {
+  if (definition?.family === 'position' && a && b) {
+    const third = anchors[2] ?? { x: b.x, y: a.y - (b.y - a.y) };
+    const left = Math.min(a.x, b.x, third.x);
+    const right = Math.max(a.x, b.x, third.x);
+    const top = Math.min(b.y, third.y);
+    const bottom = Math.max(b.y, third.y);
+    const entryDistance = Math.abs(normalizedPoint.y - a.y);
+    const bodyDistance = pointToRectDistance(normalizedPoint, { x: left, y: top }, { x: right, y: bottom });
+    return Math.min(entryDistance, bodyDistance);
+  }
+
+  if ((definition?.family === 'shape' || definition?.family === 'measure') && a && b) {
     if (definition.behaviors?.shapeKind === 'circle') {
       return pointToCircleDistance(normalizedPoint, a, b);
     }
@@ -381,7 +447,7 @@ function scoreLineLikeDrawing(drawing: Drawing, point: DrawPoint): number {
   return scorePolyline(normalizedPoint, anchors);
 }
 
-export function selectNearestDrawingId(drawings: Drawing[], point: DrawPoint): string | null {
+export function selectNearestDrawingId(drawings: Drawing[], point: DrawPoint, intent: SelectionIntent = 'select'): string | null {
   if (!drawings.length) return null;
   const pool = drawings.filter((d) => d.visible !== false).slice().reverse();
   let bestId: string | null = null;
@@ -395,5 +461,6 @@ export function selectNearestDrawingId(drawings: Drawing[], point: DrawPoint): s
     }
   }
 
-  return bestScore <= 2.5 ? bestId : null;
+  const limit = intent === 'erase' ? 4.2 : 2.5;
+  return bestScore <= limit ? bestId : null;
 }

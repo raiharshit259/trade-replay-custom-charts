@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AreaChart, BarChart3, Camera, CandlestickChart, ChevronDown, LineChart, Magnet, Plus, Redo2, TrendingUp, Undo2, X, type LucideIcon } from 'lucide-react';
+import { AreaChart, BarChart3, Camera, CandlestickChart, ChevronDown, LineChart, Magnet, Maximize2, Minimize2, Plus, Redo2, TrendingUp, Undo2, X, type LucideIcon } from 'lucide-react';
 import type { ChartType } from '@/services/chart/dataTransforms';
 import { chartTypeGroups, chartTypeLabels } from '@/services/chart/dataTransforms';
 import type { CrosshairSnapMode } from '@/hooks/useChart';
@@ -99,6 +99,9 @@ type ChartTopBarProps = {
   setTreeOpen: (value: boolean) => void;
   selectedDrawingVariant?: string | null;
   isMobile: boolean;
+  isFullView: boolean;
+  onToggleFullView: () => void;
+  modalZIndex?: number;
   onCompareSymbol?: () => void;
 };
 
@@ -147,16 +150,16 @@ function useDropdown() {
 
 /* ─── Custom interval modal ───────────────────────────────────────────── */
 
-function CustomIntervalModal({ onApply, onClose }: { onApply: (value: string) => void; onClose: () => void }) {
+function CustomIntervalModal({ onApply, onClose, layerZIndex }: { onApply: (value: string) => void; onClose: () => void; layerZIndex: number }) {
   const [amount, setAmount] = useState('5');
   const [unit, setUnit] = useState<'T' | 'S' | '' | 'H' | 'D' | 'W' | 'M'>('');
   const unitLabels: Record<string, string> = { T: 'Ticks', S: 'Seconds', '': 'Minutes', H: 'Hours', D: 'Days', W: 'Weeks', M: 'Months' };
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 flex items-center justify-center bg-black/60" style={{ zIndex: layerZIndex }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div data-testid="custom-interval-modal" className="w-[320px] rounded-xl border border-primary/25 bg-background p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">Custom Interval</span>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:text-foreground"><X size={16} /></button>
+          <button type="button" data-testid="custom-interval-close" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:text-foreground"><X size={16} /></button>
         </div>
         <div className="mb-4 flex gap-2">
           <input data-testid="custom-interval-amount" type="number" min={1} max={9999} value={amount} onChange={(e) => setAmount(e.target.value)} className="w-20 rounded-md border border-border/70 bg-background/80 px-2.5 py-2 text-sm text-foreground outline-none focus:border-primary/50" />
@@ -203,6 +206,9 @@ export default function ChartTopBar({
   setTreeOpen,
   selectedDrawingVariant,
   isMobile,
+  isFullView,
+  onToggleFullView,
+  modalZIndex = 90,
   onCompareSymbol,
 }: ChartTopBarProps) {
   const [interval, setInterval] = useState<IntervalValue>('1D');
@@ -394,6 +400,7 @@ export default function ChartTopBar({
       {/* Options */}
       <button
         type="button"
+        data-testid="chart-options-toggle"
         onClick={() => setOptionsOpen(!optionsOpen)}
         className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
           optionsOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
@@ -405,12 +412,24 @@ export default function ChartTopBar({
       {/* Objects */}
       <button
         type="button"
+        data-testid="chart-objects-toggle"
         onClick={() => setTreeOpen(!treeOpen)}
         className={`rounded-md px-2 py-1 text-[11px] font-semibold transition ${
           treeOpen ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-foreground'
         }`}
       >
         Objects
+      </button>
+
+      {/* Full view */}
+      <button
+        type="button"
+        data-testid="chart-toggle-full-view"
+        onClick={onToggleFullView}
+        className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+        title={isFullView ? 'Exit full view' : 'Open full view'}
+      >
+        {isFullView ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
       </button>
 
       <span className="h-4 w-px bg-border/40" />
@@ -436,6 +455,7 @@ export default function ChartTopBar({
       {customModalOpen && (
         <CustomIntervalModal
           onApply={(value) => setInterval(value)}
+          layerZIndex={modalZIndex}
           onClose={() => setCustomModalOpen(false)}
         />
       )}

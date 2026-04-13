@@ -27,6 +27,7 @@ interface IndicatorsModalProps {
   onRemoveIndicator: (id: string) => void;
   /** IDs registered in the engine — used to grey out non-builtin entries */
   builtinIds: Set<string>;
+  portalZIndex?: number;
 }
 
 /* ─── Section icon ──────────────────────────────────────────────────────── */
@@ -53,6 +54,7 @@ export default function IndicatorsModal({
   onAddIndicator,
   onRemoveIndicator,
   builtinIds,
+  portalZIndex = 50,
 }: IndicatorsModalProps) {
   const [activeSidebar, setActiveSidebar] = useState('technicals');
   const [search, setSearch] = useState('');
@@ -107,10 +109,11 @@ export default function IndicatorsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogOverlay className="bg-black/70" />
+        <DialogOverlay className="bg-black/70" style={{ zIndex: portalZIndex }} />
         <div
           data-testid="indicators-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ zIndex: portalZIndex + 1 }}
           onWheelCapture={(e) => {
             // Keep wheel interactions contained within the modal and forward to the
             // right-pane scroller so mouse-wheel always works over list rows/buttons.

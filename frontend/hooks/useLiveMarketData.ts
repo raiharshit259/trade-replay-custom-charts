@@ -36,6 +36,38 @@ function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
 }
 
+function toMinuteIso(input: string): string {
+  const value = Date.parse(input);
+  if (!Number.isFinite(value)) return input;
+  return new Date(Math.floor(value / 60_000) * 60_000).toISOString();
+}
+
+function normalizeMinuteCandles(candles: CandleData[]): CandleData[] {
+  if (candles.length <= 1) return candles;
+
+  const sorted = candles
+    .slice()
+    .sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+
+  const normalized: CandleData[] = [];
+  for (const candle of sorted) {
+    const bucketTime = toMinuteIso(candle.time);
+    const previous = normalized[normalized.length - 1];
+
+    if (previous && previous.time === bucketTime) {
+      previous.high = Math.max(previous.high, candle.high);
+      previous.low = Math.min(previous.low, candle.low);
+      previous.close = candle.close;
+      previous.volume = Math.max(previous.volume, candle.volume);
+      continue;
+    }
+
+    normalized.push({ ...candle, time: bucketTime });
+  }
+
+  return normalized;
+}
+
 function buildPortfolioCandles(holdings: PortfolioHolding[], candlesBySymbol: Record<string, CandleData[]>): CandleData[] {
   if (holdings.length === 0) return [];
 
@@ -166,7 +198,7 @@ export function useLiveMarketData(input: {
         });
 
         let partial: Partial<LiveMarketState> = {
-          symbolCandles: symbolPayload.candles,
+          symbolCandles: normalizeMinuteCandles(symbolPayload.candles),
           isLoading: false,
           error: null,
         };
@@ -201,7 +233,7 @@ export function useLiveMarketData(input: {
                   params: { boxSize: 0.5 },
                   indicators: [{ id: "sma", params: { period: 20 } }],
                 });
-                return { symbol: item, candles: response.candles };
+                return { symbol: item, candles: normalizeMinuteCandles(response.candles) };
               }),
             );
 
@@ -217,16 +249,32 @@ export function useLiveMarketData(input: {
             if (candles.length === 0) return;
 
             const last = candles[candles.length - 1];
+            const lastBucketTime = toMinuteIso(last.time);
+            const quoteBucketTime = toMinuteIso(quote.timestamp);
+
+            if (quoteBucketTime === lastBucketTime) {
+              const next = {
+                ...last,
+                close: quote.price,
+                high: Math.max(last.high, quote.price),
+                low: Math.min(last.low, quote.price),
+                volume: quote.volume,
+              };
+
+              portfolioCandleMapRef.current[quoteSymbol] = [...candles.slice(0, -1), next];
+              return;
+            }
+
             const next = {
-              ...last,
-              time: quote.timestamp,
+              time: quoteBucketTime,
+              open: last.close,
+              high: Math.max(last.close, quote.price),
+              low: Math.min(last.close, quote.price),
               close: quote.price,
-              high: Math.max(last.high, quote.price),
-              low: Math.min(last.low, quote.price),
               volume: quote.volume,
             };
 
-            portfolioCandleMapRef.current[quoteSymbol] = [...candles.slice(0, -1), next];
+            portfolioCandleMapRef.current[quoteSymbol] = [...candles, next].slice(-220);
           });
 
           const portfolioCandles = buildPortfolioCandles(holdings, portfolioCandleMapRef.current);

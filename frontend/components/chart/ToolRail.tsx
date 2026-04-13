@@ -138,6 +138,7 @@ type ToolRailProps = {
   onZoomOut: () => void;
   onMeasure: () => void;
   onDelete: () => void;
+  portalZIndex?: number;
 };
 
 export default function ToolRail({
@@ -164,6 +165,7 @@ export default function ToolRail({
   onZoomOut,
   onMeasure,
   onDelete,
+  portalZIndex = 60,
 }: ToolRailProps) {
   const railRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
@@ -225,9 +227,9 @@ export default function ToolRail({
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
-      zIndex: 60,
+      zIndex: portalZIndex,
     });
-  }, [expandedCategory]);
+  }, [expandedCategory, portalZIndex]);
 
   useEffect(() => {
     positionSubmenu();

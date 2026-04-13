@@ -19,7 +19,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export type CrosshairSnapMode = 'free' | 'time' | 'ohlc';
 
-export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType, onResize?: () => void) {
+export function useChart(data: CandleData[], visibleCount: number, chartType: ChartType, onResize?: () => void, mountKey = 'default') {
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<ReturnType<typeof createTradingChart> | null>(null);
@@ -27,8 +27,7 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
   const resizeDebounceRef = useRef<number | null>(null);
   const lastLengthRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
-  const isUserInteractingRef = useRef(false);
-  const interactionResetTimerRef = useRef<number | null>(null);
+  const isDetachedFromRealtimeRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   const transformedData = useMemo(() => transformChartData(data, visibleCount), [data, visibleCount]);
@@ -51,22 +50,16 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
 
     resizeChartSurface(chart, container, overlay);
 
-    const markInteracting = () => {
-      isUserInteractingRef.current = true;
-      if (interactionResetTimerRef.current != null) {
-        window.clearTimeout(interactionResetTimerRef.current);
-      }
-      interactionResetTimerRef.current = window.setTimeout(() => {
-        const currentPosition = chartRef.current?.timeScale().scrollPosition();
-        if (currentPosition != null && currentPosition <= 0.5) {
-          isUserInteractingRef.current = false;
-        }
-      }, 1200);
+    const syncDetachState = () => {
+      const position = chart.timeScale().scrollPosition();
+      isDetachedFromRealtimeRef.current = position != null && position > 0.5;
     };
 
-    container.addEventListener('wheel', markInteracting, { passive: true });
-    container.addEventListener('pointerdown', markInteracting);
-    container.addEventListener('touchstart', markInteracting, { passive: true });
+    chart.timeScale().subscribeVisibleTimeRangeChange(syncDetachState);
+    container.addEventListener('wheel', syncDetachState, { passive: true });
+    container.addEventListener('pointerup', syncDetachState);
+    container.addEventListener('touchend', syncDetachState, { passive: true });
+    syncDetachState();
 
     const observer = new ResizeObserver(() => {
       if (resizeDebounceRef.current != null) {
@@ -83,29 +76,32 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     setReady(true);
 
     return () => {
-      if (interactionResetTimerRef.current != null) {
-        window.clearTimeout(interactionResetTimerRef.current);
-      }
       if (resizeDebounceRef.current != null) {
         window.clearTimeout(resizeDebounceRef.current);
       }
-      container.removeEventListener('wheel', markInteracting);
-      container.removeEventListener('pointerdown', markInteracting);
-      container.removeEventListener('touchstart', markInteracting);
+      try {
+        chart.timeScale().unsubscribeVisibleTimeRangeChange(syncDetachState);
+      } catch {
+        // Chart may already be disposed.
+      }
+      container.removeEventListener('wheel', syncDetachState);
+      container.removeEventListener('pointerup', syncDetachState);
+      container.removeEventListener('touchend', syncDetachState);
       observer.disconnect();
       chart.remove();
       chartRef.current = null;
       seriesMapRef.current = null;
       setReady(false);
     };
-  }, []);
+  }, [mountKey]);
 
   useEffect(() => {
     const map = seriesMapRef.current;
     const chart = chartRef.current;
-    if (!map || !chart) return;
+    if (!ready || !map || !chart) return;
 
     const timeScale = chart.timeScale();
+    const wasDetachedFromRealtime = isDetachedFromRealtimeRef.current;
     const previousLogicalRange = timeScale.getVisibleLogicalRange();
     const previousScrollPosition = timeScale.scrollPosition();
     const nextLength = transformedData.ohlcRows.length;
@@ -120,13 +116,9 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
       updateSeriesData(map, transformedData);
     } else {
       applySeriesData(map, transformedData);
-      isUserInteractingRef.current = false;
     }
 
-    if (isUserInteractingRef.current) {
-      if (previousScrollPosition != null && Number.isFinite(previousScrollPosition)) {
-        timeScale.applyOptions({ rightOffset: previousScrollPosition });
-      }
+    if (wasDetachedFromRealtime) {
       if (previousLogicalRange) {
         timeScale.setVisibleLogicalRange(previousLogicalRange);
       }
@@ -138,19 +130,17 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     }
 
     const postPosition = timeScale.scrollPosition();
-    if (postPosition != null && postPosition <= 0.5) {
-      isUserInteractingRef.current = false;
-    }
+    isDetachedFromRealtimeRef.current = postPosition != null && postPosition > 0.5;
 
     lastLengthRef.current = nextLength;
     lastTimeRef.current = nextLast;
-  }, [transformedData]);
+  }, [ready, transformedData]);
 
   useEffect(() => {
     const map = seriesMapRef.current;
-    if (!map) return;
+    if (!ready || !map) return;
     applySeriesVisibility(map, chartType);
-  }, [chartType]);
+  }, [chartType, ready]);
 
   const pointerToDataPoint = useCallback((clientX: number, clientY: number, snapMode: CrosshairSnapMode, magnetMode: boolean) => {
     const overlay = overlayRef.current;
@@ -185,6 +175,17 @@ export function useChart(data: CandleData[], visibleCount: number, chartType: Ch
     let snapped = prices[0];
     for (let i = 1; i < prices.length; i += 1) {
       if (Math.abs(prices[i] - rawPrice) < Math.abs(snapped - rawPrice)) snapped = prices[i];
+    }
+
+    if (magnetMode) {
+      const baseRange = Math.max(1e-6, candle.high - candle.low, Math.abs(candle.close - candle.open));
+      const exponent = Math.floor(Math.log10(baseRange));
+      const baseStep = Math.pow(10, exponent);
+      const gridStep = Math.max(baseStep / 2, Math.abs(rawPrice) * 0.0001, 0.0001);
+      const snappedToGrid = Math.round(rawPrice / gridStep) * gridStep;
+      if (Math.abs(snappedToGrid - rawPrice) < Math.abs(snapped - rawPrice) * 0.9) {
+        snapped = snappedToGrid;
+      }
     }
 
     return { time: candle.time, price: snapped };
